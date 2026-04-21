@@ -52,6 +52,7 @@ const state = {
 };
 
 const page = document.body.dataset.page || "home";
+let pageEventController = null;
 const pageDateFormatter = new Intl.DateTimeFormat(undefined, {
   month: "long",
   day: "numeric",
@@ -101,6 +102,8 @@ function installPageTransitions() {
 function installCardSpotlight() {
   const targets = document.querySelectorAll(".panel-card, .showcase-card, .metric-card, .resource-card, .report-block");
   targets.forEach((node) => {
+    if (node.dataset.spotlightBound === "true") return;
+    node.dataset.spotlightBound = "true";
     node.addEventListener("pointermove", (event) => {
       const rect = node.getBoundingClientRect();
       const x = event.clientX - rect.left;
@@ -189,6 +192,12 @@ function setActiveStudyId(studyId) {
   } else {
     localStorage.removeItem(scopedKey);
   }
+}
+
+function resetPageEventController() {
+  pageEventController?.abort();
+  pageEventController = new AbortController();
+  return pageEventController.signal;
 }
 
 function scopedPath(path) {
@@ -364,9 +373,9 @@ function renderHeader() {
     select.appendChild(el("option", { text: study.name, attrs: { value: study.id } }));
   });
   select.value = state.activeStudyId;
-  select.addEventListener("change", () => {
+  select.addEventListener("change", async () => {
     setActiveStudyId(select.value);
-    window.location.reload();
+    await refreshCurrentPage();
   });
   selectLabel.appendChild(select);
   switcher.appendChild(selectLabel);
@@ -411,6 +420,7 @@ function renderHeader() {
 function renderWorkspaceNav() {
   const nav = document.querySelector("[data-workspace-nav]");
   if (!nav) return;
+  nav.replaceChildren();
   WORKSPACE_NAV.forEach((item) => {
     nav.appendChild(
       el("a", {
@@ -687,15 +697,16 @@ async function initStudies() {
       text: study.id === state.activeStudyId ? "Selected" : "Set active study",
       attrs: { type: "button" },
     });
-    button.addEventListener("click", () => {
+    button.addEventListener("click", async () => {
       setActiveStudyId(study.id);
-      window.location.reload();
+      await refreshCurrentPage();
     });
     card.appendChild(button);
     return card;
   });
 
   const form = document.getElementById("study-create-form");
+  const signal = pageEventController?.signal;
   form?.addEventListener("submit", async (event) => {
     event.preventDefault();
     const output = document.getElementById("study-create-output");
@@ -718,7 +729,7 @@ async function initStudies() {
     } catch (error) {
       setNodeContent(output, error.message);
     }
-  });
+  }, { signal });
 }
 
 async function initWorkspace() {
@@ -771,7 +782,7 @@ async function initWorkspace() {
   );
 }
 
-async function initProtocols() {
+async function initProtocols(signal) {
   if (requireActiveStudy("protocol-list", "Select a study before saving or viewing protocol records.")) return;
   const list = document.getElementById("protocol-list");
   const output = document.getElementById("protocol-output");
@@ -814,7 +825,7 @@ async function initProtocols() {
     } catch (error) {
       setNodeContent(output, error.message);
     }
-  });
+  }, { signal });
 
   form?.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -838,12 +849,12 @@ async function initProtocols() {
     } catch (error) {
       setNodeContent(output, error.message);
     }
-  });
+  }, { signal });
 
   await refresh();
 }
 
-async function initPersonas() {
+async function initPersonas(signal) {
   if (requireActiveStudy("persona-list", "Select a study before creating or viewing personas.")) return;
   const list = document.getElementById("persona-list");
   const output = document.getElementById("persona-output");
@@ -884,7 +895,7 @@ async function initPersonas() {
     } catch (error) {
       setNodeContent(output, error.message);
     }
-  });
+  }, { signal });
 
   form?.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -906,12 +917,12 @@ async function initPersonas() {
     } catch (error) {
       setNodeContent(output, error.message);
     }
-  });
+  }, { signal });
 
   await refresh();
 }
 
-async function initInterviewGuide() {
+async function initInterviewGuide(signal) {
   if (requireActiveStudy("guide-list", "Select a study before creating or viewing interview guides.")) return;
   const questionsOutput = document.getElementById("questions-output");
   const list = document.getElementById("guide-list");
@@ -951,7 +962,7 @@ async function initInterviewGuide() {
     } catch (error) {
       setNodeContent(questionsOutput, error.message);
     }
-  });
+  }, { signal });
 
   extractForm?.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -969,7 +980,7 @@ async function initInterviewGuide() {
     } catch (error) {
       setNodeContent(questionsOutput, error.message);
     }
-  });
+  }, { signal });
 
   saveForm?.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -992,12 +1003,12 @@ async function initInterviewGuide() {
     } catch (error) {
       setNodeContent(questionsOutput, error.message);
     }
-  });
+  }, { signal });
 
   await refresh();
 }
 
-async function initTranscripts() {
+async function initTranscripts(signal) {
   if (requireActiveStudy("transcript-list", "Select a study before saving or viewing transcripts.")) return;
   const list = document.getElementById("transcript-list");
   const output = document.getElementById("transcript-output");
@@ -1042,7 +1053,7 @@ async function initTranscripts() {
     } catch (error) {
       setNodeContent(output, error.message);
     }
-  });
+  }, { signal });
 
   form?.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -1062,7 +1073,7 @@ async function initTranscripts() {
     } catch (error) {
       setNodeContent(output, error.message);
     }
-  });
+  }, { signal });
 
   await refresh();
 }
@@ -1078,7 +1089,7 @@ function populateSelect(node, items, labelKey = "name", includeBlank = true) {
   });
 }
 
-async function initSimulations() {
+async function initSimulations(signal) {
   if (requireActiveStudy("simulation-list", "Select a study before running or viewing simulations.")) return;
   const [personas, guides, protocols] = await Promise.all([
     loadCollection("personas"),
@@ -1135,7 +1146,7 @@ async function initSimulations() {
     } catch (error) {
       setNodeContent(output, error.message);
     }
-  });
+  }, { signal });
 
   await refresh();
 }
@@ -1185,7 +1196,7 @@ function renderComparisonReport(container, payload) {
   }
 }
 
-async function initComparisons() {
+async function initComparisons(signal) {
   if (requireActiveStudy("comparison-list", "Select a study before generating or viewing comparisons.")) return;
   const [transcripts, simulations, protocols] = await Promise.all([
     loadCollection("transcripts"),
@@ -1233,12 +1244,12 @@ async function initComparisons() {
     } catch (error) {
       setNodeContent(output, error.message);
     }
-  });
+  }, { signal });
 
   await refresh();
 }
 
-async function initSettings() {
+async function initSettings(signal) {
   const stateNode = document.getElementById("settings-state");
   if (stateNode) {
     stateNode.replaceChildren(
@@ -1249,13 +1260,13 @@ async function initSettings() {
     );
   }
 
-  document.getElementById("clear-study-selection")?.addEventListener("click", () => {
+  document.getElementById("clear-study-selection")?.addEventListener("click", async () => {
     setActiveStudyId("");
-    window.location.reload();
-  });
+    await refreshCurrentPage();
+  }, { signal });
 }
 
-async function initSignIn() {
+async function initSignIn(signal) {
   if (state.auth.authenticated) {
     window.location.assign("/dashboard");
     return;
@@ -1299,12 +1310,12 @@ async function initSignIn() {
     authMode = "sign-in";
     setNodeContent(output, "Enter your credentials to start a session.");
     refreshAuthModeUi();
-  });
+  }, { signal });
   signUpModeButton?.addEventListener("click", () => {
     authMode = "sign-up";
     setNodeContent(output, "Create-account mode enabled. Submit the form below to register.");
     refreshAuthModeUi();
-  });
+  }, { signal });
   refreshAuthModeUi();
 
   form?.addEventListener("submit", async (event) => {
@@ -1344,7 +1355,55 @@ async function initSignIn() {
     } catch (error) {
       setNodeContent(output, error.message || "Sign in failed.");
     }
-  });
+  }, { signal });
+}
+
+async function initializeCurrentPage() {
+  const signal = resetPageEventController();
+  switch (page) {
+    case "dashboard":
+      await initDashboard();
+      break;
+    case "studies":
+      await initStudies(signal);
+      break;
+    case "workspace":
+      await initWorkspace();
+      break;
+    case "protocol":
+      await initProtocols(signal);
+      break;
+    case "personas":
+      await initPersonas(signal);
+      break;
+    case "interview-guide":
+      await initInterviewGuide(signal);
+      break;
+    case "transcripts":
+      await initTranscripts(signal);
+      break;
+    case "simulations":
+      await initSimulations(signal);
+      break;
+    case "comparisons":
+      await initComparisons(signal);
+      break;
+    case "settings":
+      await initSettings(signal);
+      break;
+    case "sign-in":
+      await initSignIn(signal);
+      break;
+    default:
+      break;
+  }
+}
+
+async function refreshCurrentPage() {
+  renderHeader();
+  renderWorkspaceNav();
+  await initializeCurrentPage();
+  installCardSpotlight();
 }
 
 async function initPage() {
@@ -1364,47 +1423,7 @@ async function initPage() {
       return;
     }
 
-    renderHeader();
-    renderWorkspaceNav();
-    installCardSpotlight();
-
-    switch (page) {
-      case "dashboard":
-        await initDashboard();
-        break;
-      case "studies":
-        await initStudies();
-        break;
-      case "workspace":
-        await initWorkspace();
-        break;
-      case "protocol":
-        await initProtocols();
-        break;
-      case "personas":
-        await initPersonas();
-        break;
-      case "interview-guide":
-        await initInterviewGuide();
-        break;
-      case "transcripts":
-        await initTranscripts();
-        break;
-      case "simulations":
-        await initSimulations();
-        break;
-      case "comparisons":
-        await initComparisons();
-        break;
-      case "settings":
-        await initSettings();
-        break;
-      case "sign-in":
-        await initSignIn();
-        break;
-      default:
-        break;
-    }
+    await refreshCurrentPage();
   } catch (error) {
     console.error(error);
   } finally {
