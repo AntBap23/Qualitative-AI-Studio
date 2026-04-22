@@ -1089,6 +1089,21 @@ a:focus-visible {
   color: var(--text-secondary);
 }
 
+.thematic-coding-section {
+  display: grid;
+  gap: 1rem;
+}
+
+.thematic-coding-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.thematic-coding-card {
+  background: var(--surface-soft);
+}
+
 .comparison-table th,
 .comparison-table td {
   padding: 0.8rem;
@@ -1183,6 +1198,10 @@ pre {
 
 @media (max-width: 860px) {
   .comparison-summary-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .thematic-coding-grid {
     grid-template-columns: 1fr;
   }
 

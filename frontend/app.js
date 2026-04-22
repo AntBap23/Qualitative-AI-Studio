@@ -755,6 +755,34 @@ function comparisonSummaryCard({ tone, title, subtitle, body }) {
   return card;
 }
 
+function thematicCodingCard(item) {
+  const card = el("article", { className: "resource-card thematic-coding-card" });
+  const heading = joinNonEmpty([
+    item.dimension ? `${item.dimension}:` : "",
+    item.theme,
+  ]);
+  card.appendChild(el("h3", { text: heading || "Theme review" }));
+
+  if (Array.isArray(item.first_order_concepts) && item.first_order_concepts.length) {
+    card.appendChild(
+      el("p", {
+        text: `First-order concepts: ${item.first_order_concepts.filter(Boolean).join(", ")}`,
+      }),
+    );
+  }
+  if (item.real_evidence) {
+    card.appendChild(el("p", { text: `Real evidence: ${item.real_evidence}` }));
+  }
+  if (item.ai_evidence) {
+    card.appendChild(el("p", { text: `AI evidence: ${item.ai_evidence}` }));
+  }
+  if (item.review_note) {
+    card.appendChild(el("p", { text: `Coding note: ${item.review_note}` }));
+  }
+
+  return card;
+}
+
 function dashboardEntityCard({ label, title, count, copy, href, icon, meta }) {
   const card = el("article", { className: "dashboard-entity-card" });
   const header = el("div", { className: "dashboard-entity-card__header" });
@@ -1520,32 +1548,15 @@ function renderComparisonReport(container, payload) {
   });
   container.appendChild(caption);
 
-  const table = payload.comparison_table || [];
-  if (table.length) {
-    const tableWrap = el("div", { className: "comparison-table-wrap" });
-    tableWrap.appendChild(el("h3", { className: "comparison-section-title", text: "Theme-by-theme comparison" }));
-    const tableNode = el("table", { className: "comparison-table" });
-    tableNode.innerHTML = `
-      <thead>
-        <tr>
-          <th>Theme</th>
-          <th>Real Pattern</th>
-          <th>AI Pattern</th>
-          <th>Difference</th>
-        </tr>
-      </thead>
-      <tbody></tbody>
-    `;
-    const tbody = tableNode.querySelector("tbody");
-    table.forEach((row) => {
-      const tr = el("tr");
-      [row.theme, row.real_pattern, row.ai_pattern, row.difference].forEach((value) => {
-        tr.appendChild(el("td", { text: value || "" }));
-      });
-      tbody.appendChild(tr);
-    });
-    tableWrap.appendChild(tableNode);
-    container.appendChild(tableWrap);
+  const themeReview = Array.isArray(payload.theme_review) ? payload.theme_review : [];
+  if (themeReview.length) {
+    const themeSection = el("section", { className: "thematic-coding-section" });
+    themeSection.appendChild(el("h3", { className: "comparison-section-title", text: "Thematic coding review" }));
+
+    const themeGrid = el("div", { className: "thematic-coding-grid" });
+    themeReview.forEach((item) => themeGrid.appendChild(thematicCodingCard(item)));
+    themeSection.appendChild(themeGrid);
+    container.appendChild(themeSection);
   }
 
   if (payload.markdown_report) {
