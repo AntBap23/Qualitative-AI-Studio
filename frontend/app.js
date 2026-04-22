@@ -51,8 +51,9 @@ const state = {
   },
 };
 
-const page = document.body.dataset.page || "home";
+let page = document.body.dataset.page || "home";
 let pageEventController = null;
+let navigationToken = 0;
 const pageDateFormatter = new Intl.DateTimeFormat(undefined, {
   month: "long",
   day: "numeric",
@@ -84,18 +85,16 @@ function bodyReady() {
 }
 
 function installPageTransitions() {
-  document.addEventListener("click", (event) => {
+  document.addEventListener("click", async (event) => {
     const link = event.target.closest("a[href]");
     if (!link) return;
     const url = new URL(link.href, window.location.origin);
+    const target = `${url.pathname}${url.search}${url.hash}`;
     if (url.origin !== window.location.origin) return;
     if (link.target === "_blank" || event.metaKey || event.ctrlKey || event.shiftKey) return;
-    if (url.pathname === window.location.pathname) return;
+    if (target === `${window.location.pathname}${window.location.search}${window.location.hash}`) return;
     event.preventDefault();
-    document.body.classList.add("is-transitioning");
-    window.setTimeout(() => {
-      window.location.assign(url.pathname + url.search + url.hash);
-    }, 140);
+    await navigateTo(target);
   });
 }
 
@@ -314,6 +313,60 @@ async function signOutCurrentSession() {
     state.auth.user = null;
     setActiveStudyId("");
     window.location.assign("/sign-in");
+  }
+}
+
+async function fetchPageDocument(path) {
+  const response = await fetch(path, {
+    headers: { "X-Requested-With": "partial-navigation" },
+    credentials: "same-origin",
+  });
+  const html = await response.text();
+  const parser = new DOMParser();
+  const nextDocument = parser.parseFromString(html, "text/html");
+  const main = nextDocument.querySelector("main");
+  const nextPage = nextDocument.body?.dataset.page || "home";
+  const nextTitle = nextDocument.title || document.title;
+  const finalUrl = response.url ? new URL(response.url, window.location.origin) : new URL(path, window.location.origin);
+  return { main, nextPage, nextTitle, finalUrl };
+}
+
+async function navigateTo(path, options = {}) {
+  const url = new URL(path, window.location.origin);
+  const target = `${url.pathname}${url.search}${url.hash}`;
+  if (!options.force && target === `${window.location.pathname}${window.location.search}${window.location.hash}`) return;
+
+  const token = ++navigationToken;
+  document.body.classList.add("is-transitioning");
+
+  try {
+    const { main, nextPage, nextTitle, finalUrl } = await fetchPageDocument(target);
+    if (token !== navigationToken || !main) return;
+
+    const currentMain = document.querySelector("main");
+    if (!currentMain) return;
+
+    currentMain.replaceWith(main);
+    page = nextPage;
+    document.body.dataset.page = nextPage;
+    document.title = nextTitle;
+
+    const finalPath = `${finalUrl.pathname}${finalUrl.search}${finalUrl.hash}`;
+    if (options.replaceHistory) {
+      window.history.replaceState({ path: finalPath }, "", finalPath);
+    } else {
+      window.history.pushState({ path: finalPath }, "", finalPath);
+    }
+
+    await refreshCurrentPage({ scrollToTop: options.scrollToTop !== false });
+  } catch (error) {
+    console.error("Partial navigation failed, falling back to full navigation.", error);
+    window.location.assign(target);
+    return;
+  } finally {
+    if (token === navigationToken) {
+      document.body.classList.remove("is-transitioning");
+    }
   }
 }
 
@@ -1399,11 +1452,14 @@ async function initializeCurrentPage() {
   }
 }
 
-async function refreshCurrentPage() {
+async function refreshCurrentPage(options = {}) {
   renderHeader();
   renderWorkspaceNav();
   await initializeCurrentPage();
   installCardSpotlight();
+  if (options.scrollToTop) {
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }
 }
 
 async function initPage() {
@@ -1423,6 +1479,7 @@ async function initPage() {
       return;
     }
 
+    window.history.replaceState({ path: `${window.location.pathname}${window.location.search}${window.location.hash}` }, "", window.location.href);
     await refreshCurrentPage();
   } catch (error) {
     console.error(error);
@@ -1432,4 +1489,11 @@ async function initPage() {
 }
 
 installPageTransitions();
+window.addEventListener("popstate", async () => {
+  await navigateTo(`${window.location.pathname}${window.location.search}${window.location.hash}`, {
+    replaceHistory: true,
+    force: true,
+    scrollToTop: true,
+  });
+});
 initPage();
