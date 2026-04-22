@@ -38,6 +38,7 @@ html {
 body {
   margin: 0;
   min-height: 100vh;
+  overflow-x: hidden;
   background:
     radial-gradient(circle at top left, rgba(157, 110, 248, 0.18), transparent 34%),
     radial-gradient(circle at bottom right, rgba(124, 58, 237, 0.1), transparent 30%),
@@ -942,9 +943,11 @@ a:focus-visible {
 }
 
 .auth-shell {
-  min-height: calc(100vh - 220px);
+  min-height: auto;
   display: grid;
-  place-items: center;
+  justify-items: center;
+  align-items: start;
+  padding-top: 1.5rem;
 }
 
 .auth-mode-row {
@@ -1266,7 +1269,7 @@ pre {
 
   .site-shell {
     width: min(100vw - 16px, 100%);
-    padding: 172px 10px 18px;
+    padding: 108px 10px 18px;
   }
 
   .app-sidebar {
@@ -1300,16 +1303,19 @@ pre {
   }
 
   .header-bar {
-    top: 98px;
-    left: 10px;
-    right: 10px;
+    position: static;
     min-height: auto;
+    margin: 0 0 12px;
     padding: 1rem 1.05rem;
     border-radius: 24px;
   }
 
   .page-intro {
     display: none;
+  }
+
+  .auth-shell {
+    padding-top: 0.5rem;
   }
 
   .hero__copy,
