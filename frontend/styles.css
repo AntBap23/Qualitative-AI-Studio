@@ -110,6 +110,27 @@ button:focus-visible,
   box-shadow: 0 10px 22px rgba(124, 58, 237, 0.16);
 }
 
+button:disabled,
+.button:disabled,
+.button.is-loading,
+button.is-loading {
+  cursor: wait;
+  transform: none;
+  box-shadow: none;
+  opacity: 0.82;
+}
+
+.button.is-loading::before,
+button.is-loading::before {
+  content: "";
+  width: 0.85rem;
+  height: 0.85rem;
+  border-radius: 50%;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  animation: button-spin 700ms linear infinite;
+}
+
 .button--primary {
   background: linear-gradient(135deg, var(--primary), var(--primary-soft));
   color: var(--text-inverse);
@@ -770,6 +791,30 @@ a:focus-visible {
   background: var(--surface-soft);
   border: 1px solid var(--line);
   white-space: pre-wrap;
+}
+
+.message-box.is-loading {
+  border-color: rgba(124, 58, 237, 0.26);
+  background: linear-gradient(135deg, rgba(124, 58, 237, 0.06), rgba(157, 110, 248, 0.08));
+}
+
+.message-box.is-loading::before {
+  content: "";
+  display: inline-block;
+  width: 0.8rem;
+  height: 0.8rem;
+  margin-right: 0.6rem;
+  vertical-align: -0.1rem;
+  border-radius: 50%;
+  border: 2px solid var(--primary);
+  border-right-color: transparent;
+  animation: button-spin 700ms linear infinite;
+}
+
+@keyframes button-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .resource-card,

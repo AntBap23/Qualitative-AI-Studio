@@ -293,6 +293,33 @@ function setNodeContent(node, content) {
   node.textContent = typeof content === "string" ? content : pretty(content);
 }
 
+function setMessageState(node, message, options = {}) {
+  if (!node) return;
+  setNodeContent(node, message);
+  node.classList.toggle("is-loading", Boolean(options.loading));
+}
+
+function startButtonLoading(button, loadingText) {
+  if (!button) return;
+  if (!button.dataset.originalText) {
+    button.dataset.originalText = button.textContent || "";
+  }
+  button.disabled = true;
+  button.classList.add("is-loading");
+  if (loadingText) {
+    button.textContent = loadingText;
+  }
+}
+
+function stopButtonLoading(button) {
+  if (!button) return;
+  button.disabled = false;
+  button.classList.remove("is-loading");
+  if (button.dataset.originalText) {
+    button.textContent = button.dataset.originalText;
+  }
+}
+
 function makeEmptyNote(message) {
   return el("div", { className: "empty-note", text: message });
 }
@@ -337,7 +364,6 @@ async function navigateTo(path, options = {}) {
   if (!options.force && target === `${window.location.pathname}${window.location.search}${window.location.hash}`) return;
 
   const token = ++navigationToken;
-  document.body.classList.add("is-transitioning");
 
   try {
     const { main, nextPage, nextTitle, finalUrl } = await fetchPageDocument(target);
@@ -363,10 +389,6 @@ async function navigateTo(path, options = {}) {
     console.error("Partial navigation failed, falling back to full navigation.", error);
     window.location.assign(target);
     return;
-  } finally {
-    if (token === navigationToken) {
-      document.body.classList.remove("is-transitioning");
-    }
   }
 }
 
@@ -763,6 +785,7 @@ async function initStudies() {
   form?.addEventListener("submit", async (event) => {
     event.preventDefault();
     const output = document.getElementById("study-create-output");
+    const submitButton = form.querySelector('button[type="submit"]');
     const formData = new FormData(form);
     const payload = {
       name: String(formData.get("name") || "").trim(),
@@ -770,17 +793,21 @@ async function initStudies() {
     };
 
     try {
+      startButtonLoading(submitButton, "Creating study...");
+      setMessageState(output, "Creating study workspace...", { loading: true });
       const record = await callApi("/api/studies", {
         method: "POST",
         body: JSON.stringify(payload),
       });
       setActiveStudyId(record.id);
-      setNodeContent(output, `Created study: ${record.name}`);
+      setMessageState(output, `Created study: ${record.name}`);
       await loadStudies();
       renderHeader();
       await initStudies();
     } catch (error) {
-      setNodeContent(output, error.message);
+      setMessageState(output, error.message);
+    } finally {
+      stopButtonLoading(submitButton);
     }
   }, { signal });
 }
@@ -853,10 +880,11 @@ async function initProtocols(signal) {
 
   uploadForm?.addEventListener("submit", async (event) => {
     event.preventDefault();
+    const submitButton = uploadForm.querySelector('button[type="submit"]');
     const formData = new FormData(uploadForm);
     const file = formData.get("file");
     if (!(file instanceof File) || !file.name) {
-      setNodeContent(output, "Choose a protocol document before uploading.");
+      setMessageState(output, "Choose a protocol document before uploading.");
       return;
     }
 
@@ -864,6 +892,8 @@ async function initProtocols(signal) {
     payload.append("file", file);
 
     try {
+      startButtonLoading(submitButton, "Loading document...");
+      setMessageState(output, "Extracting protocol text from the uploaded file...", { loading: true });
       const extracted = await callApi("/api/protocols/extract-upload", {
         method: "POST",
         body: payload,
@@ -874,14 +904,17 @@ async function initProtocols(signal) {
       if (sharedContext && !sharedContext.value.trim()) {
         sharedContext.value = extracted.text || "";
       }
-      setNodeContent(output, `Loaded protocol text from ${file.name}. Review and split it across the protocol fields as needed.`);
+      setMessageState(output, `Loaded protocol text from ${file.name}. Review and split it across the protocol fields as needed.`);
     } catch (error) {
-      setNodeContent(output, error.message);
+      setMessageState(output, error.message);
+    } finally {
+      stopButtonLoading(submitButton);
     }
   }, { signal });
 
   form?.addEventListener("submit", async (event) => {
     event.preventDefault();
+    const submitButton = form.querySelector('button[type="submit"]');
     const formData = new FormData(form);
     const payload = {
       name: String(formData.get("name") || "").trim(),
@@ -893,14 +926,18 @@ async function initProtocols(signal) {
     };
 
     try {
+      startButtonLoading(submitButton, "Saving protocol...");
+      setMessageState(output, "Saving protocol guidance for this study...", { loading: true });
       const record = await callApi("/api/protocols", {
         method: "POST",
         body: JSON.stringify(payload),
       });
-      setNodeContent(output, `Saved protocol: ${record.name}`);
+      setMessageState(output, `Saved protocol: ${record.name}`);
       await refresh();
     } catch (error) {
-      setNodeContent(output, error.message);
+      setMessageState(output, error.message);
+    } finally {
+      stopButtonLoading(submitButton);
     }
   }, { signal });
 
@@ -926,10 +963,11 @@ async function initPersonas(signal) {
 
   uploadForm?.addEventListener("submit", async (event) => {
     event.preventDefault();
+    const submitButton = uploadForm.querySelector('button[type="submit"]');
     const formData = new FormData(uploadForm);
     const file = formData.get("file");
     if (!(file instanceof File) || !file.name) {
-      setNodeContent(output, "Choose a document before uploading.");
+      setMessageState(output, "Choose a document before uploading.");
       return;
     }
 
@@ -937,6 +975,8 @@ async function initPersonas(signal) {
     payload.append("file", file);
 
     try {
+      startButtonLoading(submitButton, "Loading document...");
+      setMessageState(output, "Reading source text from the uploaded file...", { loading: true });
       const extracted = await callApi("/api/personas/extract-upload", {
         method: "POST",
         body: payload,
@@ -944,16 +984,21 @@ async function initPersonas(signal) {
       if (personaText) {
         personaText.value = extracted.text || "";
       }
-      setNodeContent(output, `Loaded text from ${file.name}. Review it, then extract the persona.`);
+      setMessageState(output, `Loaded text from ${file.name}. Review it, then extract the persona.`);
     } catch (error) {
-      setNodeContent(output, error.message);
+      setMessageState(output, error.message);
+    } finally {
+      stopButtonLoading(submitButton);
     }
   }, { signal });
 
   form?.addEventListener("submit", async (event) => {
     event.preventDefault();
+    const submitButton = form.querySelector('button[type="submit"]');
     const formData = new FormData(form);
     try {
+      startButtonLoading(submitButton, "Extracting persona...");
+      setMessageState(output, "Extracting persona details and saving the study profile...", { loading: true });
       const extracted = await callApi("/api/personas/extract", {
         method: "POST",
         body: JSON.stringify({
@@ -965,10 +1010,12 @@ async function initPersonas(signal) {
         method: "POST",
         body: JSON.stringify({ ...extracted, study_id: state.activeStudyId }),
       });
-      setNodeContent(output, `Saved persona: ${saved.name}`);
+      setMessageState(output, `Saved persona: ${saved.name}`);
       await refresh();
     } catch (error) {
-      setNodeContent(output, error.message);
+      setMessageState(output, error.message);
+    } finally {
+      stopButtonLoading(submitButton);
     }
   }, { signal });
 
@@ -993,10 +1040,11 @@ async function initInterviewGuide(signal) {
 
   uploadForm?.addEventListener("submit", async (event) => {
     event.preventDefault();
+    const submitButton = uploadForm.querySelector('button[type="submit"]');
     const formData = new FormData(uploadForm);
     const file = formData.get("file");
     if (!(file instanceof File) || !file.name) {
-      setNodeContent(questionsOutput, "Choose a guide document before uploading.");
+      setMessageState(questionsOutput, "Choose a guide document before uploading.");
       return;
     }
 
@@ -1004,6 +1052,8 @@ async function initInterviewGuide(signal) {
     payload.append("file", file);
 
     try {
+      startButtonLoading(submitButton, "Loading guide...");
+      setMessageState(questionsOutput, "Reading interview guide text from the uploaded file...", { loading: true });
       const extracted = await callApi("/api/question-guides/extract-upload", {
         method: "POST",
         body: payload,
@@ -1011,16 +1061,21 @@ async function initInterviewGuide(signal) {
       if (guideText) {
         guideText.value = extracted.text || "";
       }
-      setNodeContent(questionsOutput, `Loaded text from ${file.name}. Review it, then extract questions.`);
+      setMessageState(questionsOutput, `Loaded text from ${file.name}. Review it, then extract questions.`);
     } catch (error) {
-      setNodeContent(questionsOutput, error.message);
+      setMessageState(questionsOutput, error.message);
+    } finally {
+      stopButtonLoading(submitButton);
     }
   }, { signal });
 
   extractForm?.addEventListener("submit", async (event) => {
     event.preventDefault();
+    const submitButton = extractForm.querySelector('button[type="submit"]');
     const formData = new FormData(extractForm);
     try {
+      startButtonLoading(submitButton, "Extracting questions...");
+      setMessageState(questionsOutput, "Extracting interview questions from the guide text...", { loading: true });
       const questions = await callApi("/api/question-guides/extract", {
         method: "POST",
         body: JSON.stringify({
@@ -1029,20 +1084,28 @@ async function initInterviewGuide(signal) {
         }),
       });
       state.extractedQuestions = questions;
-      setNodeContent(questionsOutput, questions.length ? questions.map((item, index) => `${index + 1}. ${item}`).join("\n") : "No questions extracted.");
+      setMessageState(
+        questionsOutput,
+        questions.length ? questions.map((item, index) => `${index + 1}. ${item}`).join("\n") : "No questions extracted.",
+      );
     } catch (error) {
-      setNodeContent(questionsOutput, error.message);
+      setMessageState(questionsOutput, error.message);
+    } finally {
+      stopButtonLoading(submitButton);
     }
   }, { signal });
 
   saveForm?.addEventListener("submit", async (event) => {
     event.preventDefault();
+    const submitButton = saveForm.querySelector('button[type="submit"]');
     const formData = new FormData(saveForm);
     if (!state.extractedQuestions.length) {
-      setNodeContent(questionsOutput, "Extract questions before saving a guide.");
+      setMessageState(questionsOutput, "Extract questions before saving a guide.");
       return;
     }
     try {
+      startButtonLoading(submitButton, "Saving guide...");
+      setMessageState(questionsOutput, "Saving extracted guide to the current study...", { loading: true });
       await callApi("/api/question-guides", {
         method: "POST",
         body: JSON.stringify({
@@ -1051,10 +1114,12 @@ async function initInterviewGuide(signal) {
           study_id: state.activeStudyId,
         }),
       });
-      setNodeContent(questionsOutput, "Guide saved successfully.");
+      setMessageState(questionsOutput, "Guide saved successfully.");
       await refresh();
     } catch (error) {
-      setNodeContent(questionsOutput, error.message);
+      setMessageState(questionsOutput, error.message);
+    } finally {
+      stopButtonLoading(submitButton);
     }
   }, { signal });
 
@@ -1081,10 +1146,11 @@ async function initTranscripts(signal) {
 
   uploadForm?.addEventListener("submit", async (event) => {
     event.preventDefault();
+    const submitButton = uploadForm.querySelector('button[type="submit"]');
     const formData = new FormData(uploadForm);
     const file = formData.get("file");
     if (!(file instanceof File) || !file.name) {
-      setNodeContent(output, "Choose a transcript document before uploading.");
+      setMessageState(output, "Choose a transcript document before uploading.");
       return;
     }
 
@@ -1092,6 +1158,8 @@ async function initTranscripts(signal) {
     payload.append("file", file);
 
     try {
+      startButtonLoading(submitButton, "Loading transcript...");
+      setMessageState(output, "Extracting transcript text from the uploaded file...", { loading: true });
       const extracted = await callApi("/api/transcripts/extract-upload", {
         method: "POST",
         body: payload,
@@ -1102,16 +1170,21 @@ async function initTranscripts(signal) {
       if (transcriptName && !transcriptName.value.trim()) {
         transcriptName.value = file.name.replace(/\.[^.]+$/, "");
       }
-      setNodeContent(output, `Loaded text from ${file.name}. Review it, then save the transcript.`);
+      setMessageState(output, `Loaded text from ${file.name}. Review it, then save the transcript.`);
     } catch (error) {
-      setNodeContent(output, error.message);
+      setMessageState(output, error.message);
+    } finally {
+      stopButtonLoading(submitButton);
     }
   }, { signal });
 
   form?.addEventListener("submit", async (event) => {
     event.preventDefault();
+    const submitButton = form.querySelector('button[type="submit"]');
     const formData = new FormData(form);
     try {
+      startButtonLoading(submitButton, "Saving transcript...");
+      setMessageState(output, "Saving transcript to the current study...", { loading: true });
       const record = await callApi("/api/transcripts", {
         method: "POST",
         body: JSON.stringify({
@@ -1121,10 +1194,12 @@ async function initTranscripts(signal) {
           study_id: state.activeStudyId,
         }),
       });
-      setNodeContent(output, `Saved transcript: ${record.name}`);
+      setMessageState(output, `Saved transcript: ${record.name}`);
       await refresh();
     } catch (error) {
-      setNodeContent(output, error.message);
+      setMessageState(output, error.message);
+    } finally {
+      stopButtonLoading(submitButton);
     }
   }, { signal });
 
@@ -1183,8 +1258,11 @@ async function initSimulations(signal) {
 
   form?.addEventListener("submit", async (event) => {
     event.preventDefault();
+    const submitButton = form.querySelector('button[type="submit"]');
     const formData = new FormData(form);
     try {
+      startButtonLoading(submitButton, "Running simulation...");
+      setMessageState(output, "Running the AI interview simulation for this study...", { loading: true });
       const result = await callApi("/api/simulations", {
         method: "POST",
         body: JSON.stringify({
@@ -1194,10 +1272,12 @@ async function initSimulations(signal) {
           study_id: state.activeStudyId,
         }),
       });
-      setNodeContent(output, `Simulation created with ${result.responses.length} responses.`);
+      setMessageState(output, `Simulation created with ${result.responses.length} responses.`);
       await refresh();
     } catch (error) {
-      setNodeContent(output, error.message);
+      setMessageState(output, error.message);
+    } finally {
+      stopButtonLoading(submitButton);
     }
   }, { signal });
 
@@ -1280,8 +1360,11 @@ async function initComparisons(signal) {
 
   form?.addEventListener("submit", async (event) => {
     event.preventDefault();
+    const submitButton = form.querySelector('button[type="submit"]');
     const formData = new FormData(form);
     try {
+      startButtonLoading(submitButton, "Generating comparison...");
+      setMessageState(output, "Comparing the selected transcript and simulation...", { loading: true });
       const result = await callApi("/api/comparisons", {
         method: "POST",
         body: JSON.stringify({
@@ -1291,11 +1374,13 @@ async function initComparisons(signal) {
           study_id: state.activeStudyId,
         }),
       });
-      setNodeContent(output, "Comparison generated successfully.");
+      setMessageState(output, "Comparison generated successfully.");
       renderComparisonReport(report, result.payload);
       await refresh();
     } catch (error) {
-      setNodeContent(output, error.message);
+      setMessageState(output, error.message);
+    } finally {
+      stopButtonLoading(submitButton);
     }
   }, { signal });
 
@@ -1382,6 +1467,8 @@ async function initSignIn(signal) {
     }
 
     try {
+      startButtonLoading(submitButton, authMode === "sign-up" ? "Creating account..." : "Signing in...");
+      setMessageState(output, authMode === "sign-up" ? "Creating your account..." : "Starting your session...", { loading: true });
       const endpoint = authMode === "sign-up" ? "/api/auth/sign-up" : "/api/auth/sign-in";
       const result = await callApi(endpoint, {
         method: "POST",
@@ -1389,13 +1476,13 @@ async function initSignIn(signal) {
       });
 
       if (result?.authenticated) {
-        setNodeContent(output, result?.message || "Signed in successfully. Redirecting...");
+        setMessageState(output, result?.message || "Signed in successfully. Redirecting...");
         window.setTimeout(() => window.location.assign("/dashboard"), 250);
         return;
       }
 
       if (authMode === "sign-up") {
-        setNodeContent(
+        setMessageState(
           output,
           result?.message || "Account created. Check your email to confirm, then sign in.",
         );
@@ -1404,9 +1491,11 @@ async function initSignIn(signal) {
         return;
       }
 
-      setNodeContent(output, "Unable to start a session.");
+      setMessageState(output, "Unable to start a session.");
     } catch (error) {
-      setNodeContent(output, error.message || "Sign in failed.");
+      setMessageState(output, error.message || "Sign in failed.");
+    } finally {
+      stopButtonLoading(submitButton);
     }
   }, { signal });
 }
