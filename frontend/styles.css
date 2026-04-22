@@ -67,7 +67,7 @@ body.is-ready {
 }
 
 body.is-transitioning {
-  opacity: 0;
+  opacity: 1;
 }
 
 a,
