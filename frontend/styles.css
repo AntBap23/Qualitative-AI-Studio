@@ -1018,27 +1018,12 @@ a:focus-visible {
 }
 
 .comparison-summary-card__body {
+  margin: 0;
   padding: 1.4rem 1.3rem 1.55rem;
+  font-size: clamp(1.02rem, 1.45vw, 1.15rem);
+  line-height: 1.7;
   color: #242729;
   background: #fffdfa;
-}
-
-.comparison-summary-card__intro {
-  margin: 0;
-  font-size: clamp(1rem, 1.35vw, 1.12rem);
-  line-height: 1.75;
-}
-
-.comparison-summary-card__list {
-  margin: 1rem 0 0;
-  padding-left: 1.25rem;
-  display: grid;
-  gap: 0.8rem;
-}
-
-.comparison-summary-card__list li {
-  font-size: 0.98rem;
-  line-height: 1.65;
 }
 
 .comparison-summary-card--catch {

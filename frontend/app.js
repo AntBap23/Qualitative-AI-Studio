@@ -597,32 +597,41 @@ function scoreComparisonEntry(entry) {
   return { alignedHits, divergenceHits };
 }
 
-function buildComparisonDetail(entry, fields, fallback) {
-  if (!entry) return fallback ? [fallback] : [];
-  const parts = fields
-    .map((field) => normalizeSentence(entry[field]))
+function toSentences(text) {
+  return normalizeSentence(text)
+    .split(/(?<=[.!?])\s+/)
+    .map((part) => part.trim())
     .filter(Boolean);
-  const detail = joinNonEmpty(parts, " ");
-  if (!detail) return fallback ? [fallback] : [];
-  return [entry.theme ? `${entry.theme}: ${detail}` : detail];
 }
 
-function collectCardEntries(entries, predicate, limit = 3) {
-  return entries.filter(predicate).slice(0, limit);
+function uniqueSentences(parts, limit = 4) {
+  const seen = new Set();
+  const result = [];
+
+  parts.forEach((part) => {
+    toSentences(part).forEach((sentence) => {
+      const key = sentence.toLowerCase();
+      if (!seen.has(key) && result.length < limit) {
+        seen.add(key);
+        result.push(sentence);
+      }
+    });
+  });
+
+  return result;
 }
 
-function createCardBody(intro, details) {
-  return {
-    intro: normalizeSentence(intro),
-    details: details.filter(Boolean),
-  };
+function buildCardNarrative(intro, entries, fields, fallback) {
+  const entryParts = entries.flatMap((entry) => fields.map((field) => entry[field]).filter(Boolean));
+  const sentences = uniqueSentences([intro, ...entryParts], 5);
+  const narrative = sentences.join(" ");
+  return narrative || fallback;
 }
 
 function buildComparisonCards(payload) {
   const overview = payload.overview || {};
   const table = Array.isArray(payload.comparison_table) ? payload.comparison_table : [];
-  const reviews = Array.isArray(payload.theme_review) ? payload.theme_review : [];
-  const entries = [...table, ...reviews].filter(Boolean);
+  const entries = table.filter(Boolean);
 
   const scoredEntries = entries.map((entry) => ({ entry, ...scoreComparisonEntry(entry) }));
   const alignedEntries = scoredEntries
@@ -634,99 +643,49 @@ function buildComparisonCards(payload) {
     .sort((a, b) => b.divergenceHits - a.divergenceHits)
     .map((item) => item.entry);
 
-  const strengthEntries = collectCardEntries(
-    table,
-    (row) =>
-      /consistent|coverage|structured|coherent|clear|broad|systematic|organized|comprehensive/i.test(
-        joinNonEmpty([row.ai_pattern, row.difference, row.research_implication]),
-      ),
-    4,
-  );
-
-  const weaknessEntries = collectCardEntries(
-    entries,
-    (entry) =>
-      /generic|lacks|lack|shallow|limited|hallucinat|emotion|hesitation|context|specific|specificity|lived/i.test(
-        joinNonEmpty([
-          entry.difference,
-          entry.review_note,
-          entry.ai_pattern,
-          entry.ai_evidence,
-          entry.research_implication,
-        ]),
-      ),
-    4,
-  );
-
-  const catchDetails = (alignedEntries.length ? alignedEntries : table.slice(0, 3))
-    .slice(0, 4)
-    .flatMap((entry) =>
-      buildComparisonDetail(
-        entry,
-        ["real_pattern", "ai_pattern", "difference", "review_note"],
-        "",
-      ),
-    );
-
-  const missDetails = (missedEntries.length ? missedEntries : [...table.slice(1, 3), ...reviews.slice(0, 2)])
-    .slice(0, 4)
-    .flatMap((entry) =>
-      buildComparisonDetail(
-        entry,
-        ["difference", "review_note", "research_implication", "ai_evidence"],
-        "",
-      ),
-    );
-
-  const strengthDetails = (strengthEntries.length ? strengthEntries : table.slice(0, 4))
-    .slice(0, 4)
-    .flatMap((entry) => buildComparisonDetail(entry, ["ai_pattern", "research_implication"], ""));
-
-  const weaknessDetails = (weaknessEntries.length ? weaknessEntries : reviews.slice(0, 4))
-    .slice(0, 4)
-    .flatMap((entry) =>
-      buildComparisonDetail(
-        entry,
-        ["difference", "review_note", "ai_evidence", "research_implication"],
-        "",
-      ),
-    );
-
   return [
     {
       tone: "catch",
       title: "Catch",
       subtitle: "topics aligned",
-      body: createCardBody(
+      body: buildCardNarrative(
         overview.real_summary || "The comparison surfaced several places where the AI interview tracked the same broad themes as the human interview.",
-        catchDetails,
+        (alignedEntries.length ? alignedEntries : table.slice(0, 3)).slice(0, 3),
+        ["real_pattern", "ai_pattern"],
+        "The comparison surfaced several places where the AI interview tracked the same broad themes as the human interview.",
       ),
     },
     {
       tone: "miss",
       title: "Miss",
       subtitle: "topics diverged",
-      body: createCardBody(
+      body: buildCardNarrative(
         overview.key_takeaway || "The comparison also identified where the AI output drifted away from the depth or context found in the human interview.",
-        missDetails,
+        (missedEntries.length ? missedEntries : table.slice(0, 3)).slice(0, 3),
+        ["difference", "research_implication"],
+        "The comparison also identified where the AI output drifted away from the depth or context found in the human interview.",
       ),
     },
     {
       tone: "strengths",
       title: "Strengths",
       subtitle: "AI advantages",
-      body: createCardBody(
+      body: buildCardNarrative(
         overview.ai_summary || "The structured run still reveals useful AI advantages for repeatable comparison and protocol checking.",
-        strengthDetails,
+        table.slice(0, 3),
+        ["ai_pattern"],
+        "The structured run still reveals useful AI advantages for repeatable comparison and protocol checking.",
       ),
     },
     {
       tone: "weaknesses",
       title: "Weaknesses",
       subtitle: "AI limitations",
-      body: createCardBody(
+      body: buildCardNarrative(
         overview.key_takeaway || "The analysis also shows the main limitations that keep the AI interview from substituting for human data.",
-        weaknessDetails,
+        (missedEntries.length ? missedEntries : table.slice(0, 3)).slice(0, 3),
+        ["difference"],
+        "The analysis also shows the main limitations that keep the AI interview from substituting for human data.",
       ),
     },
   ];
@@ -738,20 +697,7 @@ function comparisonSummaryCard({ tone, title, subtitle, body }) {
   header.appendChild(el("h3", { text: title }));
   header.appendChild(el("span", { className: "comparison-summary-card__subtitle", text: subtitle }));
   card.appendChild(header);
-
-  const bodyWrap = el("div", { className: "comparison-summary-card__body" });
-  if (body?.intro) {
-    bodyWrap.appendChild(el("p", { className: "comparison-summary-card__intro", text: body.intro }));
-  }
-  if (Array.isArray(body?.details) && body.details.length) {
-    const list = el("ul", { className: "comparison-summary-card__list" });
-    body.details.forEach((detail) => {
-      list.appendChild(el("li", { text: detail }));
-    });
-    bodyWrap.appendChild(list);
-  }
-
-  card.appendChild(bodyWrap);
+  card.appendChild(el("p", { className: "comparison-summary-card__body", text: body }));
   return card;
 }
 
