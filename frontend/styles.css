@@ -46,8 +46,7 @@ body {
   font-family: var(--font-body);
   font-size: 15px;
   line-height: 1.6;
-  opacity: 0;
-  transition: opacity 180ms ease;
+  opacity: 1;
 }
 
 body::before {
@@ -60,14 +59,6 @@ body::before {
     linear-gradient(90deg, rgba(124, 58, 237, 0.035) 1px, transparent 1px);
   background-size: 42px 42px;
   mask-image: radial-gradient(circle at center, black 28%, transparent 80%);
-}
-
-body.is-ready {
-  opacity: 1;
-}
-
-body.is-transitioning {
-  opacity: 1;
 }
 
 a,
@@ -991,6 +982,98 @@ a:focus-visible {
   border-radius: 18px;
 }
 
+.comparison-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1.35rem;
+}
+
+.comparison-summary-card {
+  overflow: hidden;
+  border-radius: 22px;
+  border: 3px solid transparent;
+  background: #fffdfb;
+  box-shadow: 0 16px 38px rgba(15, 23, 42, 0.06);
+}
+
+.comparison-summary-card__header {
+  display: flex;
+  align-items: baseline;
+  gap: 0.55rem;
+  padding: 1.1rem 1.3rem;
+  color: #fff;
+}
+
+.comparison-summary-card__header h3 {
+  margin: 0;
+  font-size: clamp(1.5rem, 2vw, 2rem);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+
+.comparison-summary-card__subtitle {
+  font-size: 0.9rem;
+  font-weight: 700;
+  opacity: 0.72;
+}
+
+.comparison-summary-card__body {
+  margin: 0;
+  padding: 1.4rem 1.3rem 1.55rem;
+  font-size: clamp(1.02rem, 1.45vw, 1.15rem);
+  line-height: 1.7;
+  color: #242729;
+  background: #fffdfa;
+}
+
+.comparison-summary-card--catch {
+  border-color: #24a376;
+}
+
+.comparison-summary-card--catch .comparison-summary-card__header {
+  background: #24a376;
+}
+
+.comparison-summary-card--miss {
+  border-color: #de5a2d;
+}
+
+.comparison-summary-card--miss .comparison-summary-card__header {
+  background: #de5a2d;
+}
+
+.comparison-summary-card--strengths {
+  border-color: #7b72db;
+}
+
+.comparison-summary-card--strengths .comparison-summary-card__header {
+  background: #7b72db;
+}
+
+.comparison-summary-card--weaknesses {
+  border-color: #89867d;
+}
+
+.comparison-summary-card--weaknesses .comparison-summary-card__header {
+  background: #6d6a63;
+}
+
+.comparison-summary-caption {
+  margin: 0.35rem 0 0.2rem;
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 0.98rem;
+}
+
+.comparison-section-title {
+  margin: 0 0 0.8rem;
+  font-size: 0.86rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-secondary);
+}
+
 .comparison-table th,
 .comparison-table td {
   padding: 0.8rem;
@@ -1080,6 +1163,20 @@ pre {
   .page--detail[data-page="comparisons"] .content-grid--two > :last-child,
   body[data-page="comparisons"] .content-grid--two > :last-child {
     position: static;
+  }
+}
+
+@media (max-width: 860px) {
+  .comparison-summary-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .comparison-summary-card__header {
+    flex-wrap: wrap;
+  }
+
+  .comparison-table {
+    min-width: 720px;
   }
 }
 

@@ -537,6 +537,209 @@ function resourceCard(title, bodyText, pills = []) {
   return card;
 }
 
+function joinNonEmpty(parts, separator = " ") {
+  return parts.filter(Boolean).join(separator).trim();
+}
+
+function normalizeSentence(text) {
+  return String(text || "")
+    .replace(/\s+/g, " ")
+    .replace(/\s+([,.;:!?])/g, "$1")
+    .trim();
+}
+
+function truncateCopy(text, limit = 200) {
+  const clean = normalizeSentence(text);
+  if (clean.length <= limit) return clean;
+  const clipped = clean.slice(0, limit);
+  const safeBreak = Math.max(clipped.lastIndexOf(". "), clipped.lastIndexOf("; "), clipped.lastIndexOf(", "), clipped.lastIndexOf(" "));
+  return `${clipped.slice(0, safeBreak > 80 ? safeBreak : limit).trim()}...`;
+}
+
+function scoreComparisonEntry(entry) {
+  const text = normalizeSentence(joinNonEmpty([
+    entry.theme,
+    entry.difference,
+    entry.review_note,
+    entry.real_pattern,
+    entry.ai_pattern,
+    entry.research_implication,
+    entry.real_evidence,
+    entry.ai_evidence,
+  ])).toLowerCase();
+
+  const alignedHits = [
+    "align",
+    "aligned",
+    "overlap",
+    "shared",
+    "same",
+    "similar",
+    "consistent",
+    "converge",
+    "common",
+    "parallel",
+  ].reduce((total, token) => total + (text.includes(token) ? 1 : 0), 0);
+
+  const divergenceHits = [
+    "miss",
+    "missed",
+    "fail",
+    "failed",
+    "lack",
+    "lacks",
+    "absent",
+    "generic",
+    "shallow",
+    "diverge",
+    "diverged",
+    "flatten",
+    "omit",
+    "omits",
+    "limited",
+    "hallucinat",
+    "over-structure",
+    "overstructured",
+  ].reduce((total, token) => total + (text.includes(token) ? 1 : 0), 0);
+
+  return { alignedHits, divergenceHits };
+}
+
+function summarizeComparisonEntry(entry, fallback) {
+  if (!entry) return fallback;
+  const summary = joinNonEmpty([
+    entry.theme ? `${entry.theme}:` : "",
+    entry.difference || entry.review_note || entry.research_implication || entry.ai_pattern || entry.real_pattern,
+  ]);
+  return truncateCopy(summary || fallback);
+}
+
+function summarizeStrengths(payload) {
+  const overview = payload.overview || {};
+  const table = Array.isArray(payload.comparison_table) ? payload.comparison_table : [];
+  const positiveRow = table.find((row) =>
+    /consistent|coverage|structured|coherent|clear|broad|systematic|organized|comprehensive/i.test(
+      joinNonEmpty([row.ai_pattern, row.difference, row.research_implication]),
+    ),
+  );
+  const text = joinNonEmpty([
+    positiveRow?.theme ? `${positiveRow.theme}:` : "",
+    positiveRow?.ai_pattern,
+    overview.ai_summary,
+  ]);
+  return truncateCopy(
+    text ||
+      "AI responses stayed consistent and legible across themes, which helps with protocol testing and early-stage comparison work.",
+  );
+}
+
+function summarizeWeaknesses(payload) {
+  const overview = payload.overview || {};
+  const entries = [
+    ...(Array.isArray(payload.comparison_table) ? payload.comparison_table : []),
+    ...(Array.isArray(payload.theme_review) ? payload.theme_review : []),
+  ];
+  const weakRow = entries.find((entry) =>
+    /generic|lacks|lack|shallow|limited|hallucinat|emotion|hesitation|context|specific|specificity|lived/i.test(
+      joinNonEmpty([
+        entry.difference,
+        entry.review_note,
+        entry.ai_pattern,
+        entry.ai_evidence,
+        entry.research_implication,
+      ]),
+    ),
+  );
+  const text = joinNonEmpty([
+    weakRow?.theme ? `${weakRow.theme}:` : "",
+    weakRow?.difference || weakRow?.review_note || weakRow?.research_implication,
+    overview.key_takeaway,
+  ]);
+  return truncateCopy(
+    text ||
+      "AI outputs still flatten lived context and emotional nuance, which makes them weaker substitutes for real interviews when depth matters.",
+  );
+}
+
+function buildComparisonCards(payload) {
+  const overview = payload.overview || {};
+  const table = Array.isArray(payload.comparison_table) ? payload.comparison_table : [];
+  const reviews = Array.isArray(payload.theme_review) ? payload.theme_review : [];
+  const entries = [...table, ...reviews].filter(Boolean);
+
+  let alignedEntry = null;
+  let missedEntry = null;
+  let alignedScore = -1;
+  let missedScore = -1;
+
+  entries.forEach((entry) => {
+    const scores = scoreComparisonEntry(entry);
+    if (scores.alignedHits > alignedScore) {
+      alignedScore = scores.alignedHits;
+      alignedEntry = entry;
+    }
+    if (scores.divergenceHits > missedScore) {
+      missedScore = scores.divergenceHits;
+      missedEntry = entry;
+    }
+  });
+
+  if (!alignedEntry && table[0]) alignedEntry = table[0];
+  if (!missedEntry && table[1]) missedEntry = table[1];
+  if (!missedEntry && reviews[0]) missedEntry = reviews[0];
+
+  const catchCopy = truncateCopy(
+    summarizeComparisonEntry(
+      alignedEntry,
+      overview.real_summary || overview.key_takeaway || "AI and human interviews surfaced overlapping themes in the same analytical territory.",
+    ),
+  );
+
+  const missCopy = truncateCopy(
+    summarizeComparisonEntry(
+      missedEntry,
+      overview.key_takeaway || "AI diverged from the human interview in the places where context, tension, or lived nuance mattered most.",
+    ),
+  );
+
+  return [
+    {
+      tone: "catch",
+      title: "Catch",
+      subtitle: "topics aligned",
+      body: catchCopy,
+    },
+    {
+      tone: "miss",
+      title: "Miss",
+      subtitle: "topics diverged",
+      body: missCopy,
+    },
+    {
+      tone: "strengths",
+      title: "Strengths",
+      subtitle: "AI advantages",
+      body: summarizeStrengths(payload),
+    },
+    {
+      tone: "weaknesses",
+      title: "Weaknesses",
+      subtitle: "AI limitations",
+      body: summarizeWeaknesses(payload),
+    },
+  ];
+}
+
+function comparisonSummaryCard({ tone, title, subtitle, body }) {
+  const card = el("article", { className: `comparison-summary-card comparison-summary-card--${tone}` });
+  const header = el("div", { className: "comparison-summary-card__header" });
+  header.appendChild(el("h3", { text: title }));
+  header.appendChild(el("span", { className: "comparison-summary-card__subtitle", text: subtitle }));
+  card.appendChild(header);
+  card.appendChild(el("p", { className: "comparison-summary-card__body", text: body }));
+  return card;
+}
+
 function dashboardEntityCard({ label, title, count, copy, href, icon, meta }) {
   const card = el("article", { className: "dashboard-entity-card" });
   const header = el("div", { className: "dashboard-entity-card__header" });
@@ -1292,11 +1495,20 @@ function renderComparisonReport(container, payload) {
   }
 
   const overview = payload.overview || {};
-  container.appendChild(resourceCard("Key takeaway", overview.key_takeaway || "No overview available."));
+  const summaryGrid = el("section", { className: "comparison-summary-grid" });
+  buildComparisonCards(payload).forEach((card) => summaryGrid.appendChild(comparisonSummaryCard(card)));
+  container.appendChild(summaryGrid);
+
+  const caption = el("p", {
+    className: "comparison-summary-caption",
+    text: overview.key_takeaway || "Structured comparison synthesized from the current real and AI interview pair.",
+  });
+  container.appendChild(caption);
 
   const table = payload.comparison_table || [];
   if (table.length) {
     const tableWrap = el("div", { className: "comparison-table-wrap" });
+    tableWrap.appendChild(el("h3", { className: "comparison-section-title", text: "Theme-by-theme comparison" }));
     const tableNode = el("table", { className: "comparison-table" });
     tableNode.innerHTML = `
       <thead>
@@ -1323,7 +1535,7 @@ function renderComparisonReport(container, payload) {
 
   if (payload.markdown_report) {
     const block = el("div", { className: "report-block" });
-    block.appendChild(el("h3", { text: "Narrative report" }));
+    block.appendChild(el("h3", { className: "comparison-section-title", text: "Narrative report" }));
     block.appendChild(el("p", { text: payload.markdown_report }));
     container.appendChild(block);
   }
