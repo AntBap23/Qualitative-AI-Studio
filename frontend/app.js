@@ -41,6 +41,9 @@ const WORKSPACE_NAV = [
 
 const WORKSPACE_PAGES = new Set(WORKSPACE_NAV.map((item) => item.key));
 const PUBLIC_PAGES = new Set(["home", "sign-in"]);
+const CONSENT_PENDING = "pending";
+const CONSENT_ACCEPTED = "accepted";
+const CONSENT_DECLINED = "declined";
 const state = {
   studies: [],
   activeStudyId: "",
@@ -48,6 +51,12 @@ const state = {
   auth: {
     authenticated: false,
     user: null,
+  },
+  consent: {
+    status: CONSENT_PENDING,
+    allowsAnalytics: false,
+    consentedAt: null,
+    updatedAt: null,
   },
 };
 
@@ -150,6 +159,15 @@ async function loadAuthSession() {
   }
 }
 
+function resetConsentState() {
+  state.consent = {
+    status: CONSENT_PENDING,
+    allowsAnalytics: false,
+    consentedAt: null,
+    updatedAt: null,
+  };
+}
+
 function currentStudy() {
   return state.studies.find((study) => study.id === state.activeStudyId) || null;
 }
@@ -228,15 +246,15 @@ function formatRelativeDate(value) {
   return relativeDateFormatter.format(diffDays, "day");
 }
 
-function formatUserDisplayName(user) {
+function getUserInitial(user) {
   const email = user?.email || "";
   const localPart = email.split("@")[0] || "";
-  if (!localPart) return "Researcher";
-  return localPart
-    .split(/[._-]+/)
-    .filter(Boolean)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
+  const match = localPart.match(/[a-z0-9]/i);
+  return match ? match[0].toUpperCase() : "R";
+}
+
+function formatUserDisplayName(user) {
+  return `Researcher ${getUserInitial(user)}`;
 }
 
 function userRoleLabel(user) {
@@ -244,14 +262,109 @@ function userRoleLabel(user) {
 }
 
 function userInitials(user) {
-  const name = formatUserDisplayName(user);
-  const initials = name
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part.charAt(0).toUpperCase())
-    .join("");
-  return initials || "R";
+  return getUserInitial(user);
+}
+
+function consentStatusLabel() {
+  if (state.consent.status === CONSENT_ACCEPTED) return "User data sharing on";
+  if (state.consent.status === CONSENT_DECLINED) return "User data sharing off";
+  return "User data sharing pending";
+}
+
+function consentStatusDescription() {
+  if (state.consent.status === CONSENT_ACCEPTED) {
+    return "User ID and event data can be used for experiments and analytics.";
+  }
+  if (state.consent.status === CONSENT_DECLINED) {
+    return "User ID and event data stay out of analytics and A/B testing.";
+  }
+  return "User ID and event data stay off until the user accepts.";
+}
+
+function analyticsContext() {
+  const trackingAllowed = Boolean(state.auth.authenticated && state.auth.user?.id && state.consent.allowsAnalytics);
+  return {
+    consentStatus: state.consent.status,
+    trackingAllowed,
+    userId: trackingAllowed ? state.auth.user?.id || null : null,
+    studyId: trackingAllowed ? state.activeStudyId || null : null,
+  };
+}
+
+function trackAnalyticsEvent(eventName, payload = {}) {
+  const context = analyticsContext();
+  if (!context.trackingAllowed) return false;
+
+  const detail = {
+    event: eventName,
+    payload,
+    page,
+    path: window.location.pathname,
+    studyId: context.studyId,
+    userId: context.userId,
+    timestamp: new Date().toISOString(),
+  };
+
+  if (Array.isArray(window.dataLayer)) {
+    window.dataLayer.push(detail);
+  }
+
+  window.dispatchEvent(new CustomEvent("qa:analytics-event", { detail }));
+  return true;
+}
+
+function syncAnalyticsContext() {
+  const context = analyticsContext();
+
+  window.qualitativeResearchAnalytics = {
+    canTrack() {
+      return analyticsContext().trackingAllowed;
+    },
+    getContext() {
+      return { ...analyticsContext() };
+    },
+    track(eventName, payload = {}) {
+      return trackAnalyticsEvent(eventName, payload);
+    },
+  };
+
+  window.dispatchEvent(new CustomEvent("qa:analytics-consent", { detail: { ...context } }));
+}
+
+function applyConsentState(consent) {
+  state.consent = {
+    status: consent?.status || CONSENT_PENDING,
+    allowsAnalytics: Boolean(consent?.allows_analytics),
+    consentedAt: consent?.consented_at || null,
+    updatedAt: consent?.updated_at || null,
+  };
+  syncAnalyticsContext();
+}
+
+async function loadPrivacyConsent() {
+  if (!state.auth.authenticated) {
+    resetConsentState();
+    syncAnalyticsContext();
+    return;
+  }
+
+  try {
+    const consent = await callApi("/api/privacy-consent");
+    applyConsentState(consent);
+  } catch (error) {
+    console.error("Unable to load privacy consent state.", error);
+    resetConsentState();
+    syncAnalyticsContext();
+  }
+}
+
+async function updatePrivacyConsent(status) {
+  const consent = await callApi("/api/privacy-consent", {
+    method: "PUT",
+    body: JSON.stringify({ status }),
+  });
+  applyConsentState(consent);
+  return consent;
 }
 
 function latestRecord(items) {
@@ -338,6 +451,8 @@ async function signOutCurrentSession() {
   } finally {
     state.auth.authenticated = false;
     state.auth.user = null;
+    resetConsentState();
+    syncAnalyticsContext();
     setActiveStudyId("");
     window.location.assign("/sign-in");
   }
@@ -465,7 +580,7 @@ function renderHeader() {
     el("span", {
       className: "brand__copy",
       text: state.auth.authenticated
-        ? `${userRoleLabel(state.auth.user)} • ${state.auth.user?.email || "Signed in"}`
+        ? `${userRoleLabel(state.auth.user)} • ${consentStatusLabel()}`
         : "Sign in to access study operations.",
     }),
   );
@@ -490,6 +605,68 @@ function renderHeader() {
   topbar.append(pageIntro, utility);
   shell.append(sidebar, topbar);
   header.replaceChildren(shell);
+}
+
+function renderConsentBanner() {
+  document.querySelector("[data-consent-banner]")?.remove();
+
+  if (!state.auth.authenticated || state.consent.status !== CONSENT_PENDING) return;
+
+  const banner = el("aside", {
+    className: "consent-banner",
+    attrs: { "data-consent-banner": "true", role: "dialog", "aria-live": "polite", "aria-label": "Analytics consent" },
+  });
+
+  const copy = el("div", { className: "consent-banner__copy" });
+  copy.appendChild(el("span", { className: "panel-card__label", text: "Privacy choice" }));
+  copy.appendChild(el("strong", { text: "Can we collect user ID and event data for site analytics and A/B testing?" }));
+  copy.appendChild(
+    el("p", {
+      text: "This keeps experiment tracking off until each signed-in user explicitly accepts. You can change the choice later in Settings.",
+    }),
+  );
+
+  const actions = el("div", { className: "consent-banner__actions" });
+  const declineButton = el("button", {
+    className: "button button--secondary",
+    text: "No thanks",
+    attrs: { type: "button" },
+  });
+  const acceptButton = el("button", {
+    className: "button button--primary",
+    text: "Accept",
+    attrs: { type: "button" },
+  });
+
+  const setConsent = async (status, button, loadingText) => {
+    try {
+      startButtonLoading(button, loadingText);
+      await updatePrivacyConsent(status);
+      renderHeader();
+      renderConsentBanner();
+      if (page === "settings") {
+        await initSettings(pageEventController?.signal);
+      }
+      if (status === CONSENT_ACCEPTED) {
+        trackAnalyticsEvent("consent_accepted", { source: "banner" });
+      }
+    } catch (error) {
+      console.error("Unable to save consent choice.", error);
+    } finally {
+      stopButtonLoading(button);
+    }
+  };
+
+  declineButton.addEventListener("click", async () => {
+    await setConsent(CONSENT_DECLINED, declineButton, "Saving...");
+  });
+  acceptButton.addEventListener("click", async () => {
+    await setConsent(CONSENT_ACCEPTED, acceptButton, "Saving...");
+  });
+
+  actions.append(declineButton, acceptButton);
+  banner.append(copy, actions);
+  document.body.appendChild(banner);
 }
 
 function renderWorkspaceNav() {
@@ -1576,10 +1753,57 @@ async function initSettings(signal) {
   if (stateNode) {
     stateNode.replaceChildren(
       resourceCard("Current page", PAGE_LABELS[page] || page),
-      resourceCard("Auth session", state.auth.authenticated ? state.auth.user?.email || "Signed in" : "Not signed in"),
+      resourceCard("Signed-in identity", state.auth.authenticated ? formatUserDisplayName(state.auth.user) : "Not signed in"),
       resourceCard("Active study", currentStudy() ? currentStudy().name : "No active study selected"),
       resourceCard("Known studies in browser session", `${state.studies.length}`),
     );
+  }
+
+  const consentNode = document.getElementById("settings-consent");
+  if (consentNode) {
+    const consentCard = resourceCard("Analytics and A/B testing", consentStatusDescription(), [
+      consentStatusLabel(),
+      state.consent.updatedAt ? `Updated ${formatDate(state.consent.updatedAt)}` : "No choice saved yet",
+    ]);
+    const actions = el("div", { className: "meta-row" });
+    const declineButton = el("button", {
+      className: "button button--secondary",
+      text: "Decline tracking",
+      attrs: { type: "button" },
+    });
+    const acceptButton = el("button", {
+      className: "button button--primary",
+      text: "Accept tracking",
+      attrs: { type: "button" },
+    });
+
+    const onConsentClick = async (status, button, loadingText) => {
+      try {
+        startButtonLoading(button, loadingText);
+        await updatePrivacyConsent(status);
+        renderHeader();
+        renderConsentBanner();
+        await initSettings(signal);
+        if (status === CONSENT_ACCEPTED) {
+          trackAnalyticsEvent("consent_accepted", { source: "settings" });
+        }
+      } catch (error) {
+        console.error("Unable to update consent settings.", error);
+      } finally {
+        stopButtonLoading(button);
+      }
+    };
+
+    declineButton.addEventListener("click", async () => {
+      await onConsentClick(CONSENT_DECLINED, declineButton, "Saving...");
+    }, { signal });
+    acceptButton.addEventListener("click", async () => {
+      await onConsentClick(CONSENT_ACCEPTED, acceptButton, "Saving...");
+    }, { signal });
+
+    actions.append(declineButton, acceptButton);
+    consentCard.appendChild(actions);
+    consentNode.replaceChildren(consentCard);
   }
 
   document.getElementById("clear-study-selection")?.addEventListener("click", async () => {
@@ -1601,6 +1825,7 @@ async function initSignIn(signal) {
   const authModeLabel = document.getElementById("auth-mode-label");
   const authModeCopy = document.getElementById("auth-mode-copy");
   const submitButton = form?.querySelector('button[type="submit"]');
+  const passwordInput = form?.querySelector('input[name="password"]');
   const title = document.querySelector(".panel-card--auth h1");
   let authMode = "sign-in";
 
@@ -1619,8 +1844,16 @@ async function initSignIn(signal) {
     if (authModeCopy) {
       authModeCopy.textContent =
         authMode === "sign-up"
-          ? "Create-account mode is active. Enter your email and password, then click the Create account button below."
+          ? "Create-account mode is active. Enter your email and a password with at least 12 characters, then click the Create account button below."
           : "Sign-in mode is active. Enter your email and password, then submit the form.";
+    }
+    if (passwordInput) {
+      passwordInput.autocomplete = authMode === "sign-up" ? "new-password" : "current-password";
+      if (authMode === "sign-up") {
+        passwordInput.minLength = 12;
+      } else {
+        passwordInput.removeAttribute("minlength");
+      }
     }
     signInModeButton?.classList.toggle("is-active", authMode === "sign-in");
     signUpModeButton?.classList.toggle("is-active", authMode === "sign-up");
@@ -1727,8 +1960,10 @@ async function initializeCurrentPage() {
 
 async function refreshCurrentPage(options = {}) {
   renderHeader();
+  renderConsentBanner();
   renderWorkspaceNav();
   await initializeCurrentPage();
+  trackAnalyticsEvent("page_view", { pageLabel: PAGE_LABELS[page] || page });
   installCardSpotlight();
   if (options.scrollToTop) {
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
@@ -1741,9 +1976,12 @@ async function initPage() {
     if (state.auth.authenticated) {
       loadActiveStudyId();
       await loadStudies();
+      await loadPrivacyConsent();
     } else {
       state.studies = [];
       state.activeStudyId = "";
+      resetConsentState();
+      syncAnalyticsContext();
       localStorage.removeItem(STORAGE_KEY);
     }
 

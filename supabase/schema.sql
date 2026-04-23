@@ -103,6 +103,15 @@ create table if not exists public.comparisons (
   updated_at timestamptz not null default timezone('utc', now())
 );
 
+create table if not exists public.user_data_consents (
+  id uuid primary key default gen_random_uuid(),
+  owner_user_id uuid not null references auth.users(id) on delete cascade,
+  status text not null check (status in ('accepted', 'declined')),
+  consented_at timestamptz,
+  created_at timestamptz not null default timezone('utc', now()),
+  updated_at timestamptz not null default timezone('utc', now())
+);
+
 drop trigger if exists trg_studies_updated_at on public.studies;
 create trigger trg_studies_updated_at
 before update on public.studies
@@ -143,6 +152,11 @@ create trigger trg_comparisons_updated_at
 before update on public.comparisons
 for each row execute function public.set_updated_at();
 
+drop trigger if exists trg_user_data_consents_updated_at on public.user_data_consents;
+create trigger trg_user_data_consents_updated_at
+before update on public.user_data_consents
+for each row execute function public.set_updated_at();
+
 create index if not exists idx_studies_owner_user_id on public.studies(owner_user_id);
 create index if not exists idx_protocols_owner_user_id on public.protocols(owner_user_id);
 create index if not exists idx_personas_owner_user_id on public.personas(owner_user_id);
@@ -151,3 +165,4 @@ create index if not exists idx_transcripts_owner_user_id on public.transcripts(o
 create index if not exists idx_simulations_owner_user_id on public.simulations(owner_user_id);
 create index if not exists idx_gioia_analyses_owner_user_id on public.gioia_analyses(owner_user_id);
 create index if not exists idx_comparisons_owner_user_id on public.comparisons(owner_user_id);
+create unique index if not exists idx_user_data_consents_owner_user_id on public.user_data_consents(owner_user_id);

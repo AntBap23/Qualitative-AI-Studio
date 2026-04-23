@@ -1,4 +1,7 @@
+from collections import defaultdict, deque
 from pathlib import Path
+import time
+from urllib.parse import urlparse
 
 from fastapi import Depends, FastAPI, File, HTTPException, Request, Response, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -39,6 +42,8 @@ from backend.schemas import (
     TranscriptCreate,
     TranscriptRecord,
     UploadTextResponse,
+    UserDataConsentResponse,
+    UserDataConsentUpdateRequest,
 )
 from backend.services import ResearchBackendService
 from backend.settings import settings
@@ -96,6 +101,158 @@ FRONTEND_PAGE_ROUTES = {
 }
 PROTECTED_PAGE_ROUTES = set(FRONTEND_PAGE_ROUTES.keys()) - PUBLIC_PAGE_ROUTES
 NO_CACHE_PATHS = {"/", *FRONTEND_PAGE_ROUTES.keys()}
+NO_CACHE_API_PREFIXES = ("/api/auth",)
+UNSAFE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
+AUTH_RATE_LIMIT_BUCKETS: defaultdict[str, deque[float]] = defaultdict(deque)
+ALLOWED_UPLOAD_CONTENT_TYPES = {
+    "application/octet-stream",
+    "application/pdf",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "text/markdown",
+    "text/plain",
+}
+
+
+def _normalized_origin(value: str | None) -> str | None:
+    if not value:
+        return None
+    parsed = urlparse(value)
+    if not parsed.scheme or not parsed.netloc:
+        return None
+    return f"{parsed.scheme}://{parsed.netloc}".rstrip("/")
+
+
+def _allowed_origins_for_request(request: Request) -> set[str]:
+    origins = {origin.rstrip("/") for origin in settings.cors_origin_list}
+    origins.add(str(request.base_url).rstrip("/"))
+    return origins
+
+
+def _request_origin(request: Request) -> str | None:
+    origin = _normalized_origin(request.headers.get("Origin"))
+    if origin:
+        return origin
+    return _normalized_origin(request.headers.get("Referer"))
+
+
+def _enforce_trusted_origin(request: Request) -> None:
+    if request.method.upper() not in UNSAFE_METHODS:
+        return
+    if not request.url.path.startswith("/api"):
+        return
+
+    origin = _request_origin(request)
+    if origin and origin not in _allowed_origins_for_request(request):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Cross-site requests are not allowed.")
+
+
+def _security_headers_for_path(path: str) -> dict[str, str]:
+    headers = {
+        "Cross-Origin-Opener-Policy": "same-origin",
+        "Cross-Origin-Resource-Policy": "same-origin",
+        "Permissions-Policy": "camera=(self), microphone=(self), geolocation=(), payment=(), usb=()",
+        "Referrer-Policy": "strict-origin-when-cross-origin",
+        "X-Content-Type-Options": "nosniff",
+        "X-Frame-Options": "DENY",
+    }
+    if path not in {"/docs", "/redoc", "/openapi.json"}:
+        headers["Content-Security-Policy"] = (
+            "default-src 'self'; "
+            "base-uri 'self'; "
+            "connect-src 'self'; "
+            "font-src 'self' https://fonts.gstatic.com; "
+            "form-action 'self'; "
+            "frame-ancestors 'none'; "
+            "img-src 'self' data:; "
+            "media-src 'self' blob:; "
+            "object-src 'none'; "
+            "script-src 'self'; "
+            "style-src 'self' https://fonts.googleapis.com"
+        )
+    return headers
+
+
+def _apply_security_headers(request: Request, response: Response) -> None:
+    for key, value in _security_headers_for_path(request.url.path).items():
+        response.headers.setdefault(key, value)
+    if request.headers.get("X-Forwarded-Proto", request.url.scheme).lower() == "https":
+        response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+
+
+def _apply_no_cache_headers(response: Response) -> None:
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+
+
+def _client_identifier(request: Request) -> str:
+    forwarded_for = request.headers.get("X-Forwarded-For", "")
+    if forwarded_for:
+        return forwarded_for.split(",", 1)[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
+def _auth_rate_limit_key(request: Request, email: str) -> str:
+    return f"{request.url.path}:{_client_identifier(request)}:{email.strip().lower()}"
+
+
+def _prune_auth_rate_limit_bucket(bucket: deque[float], now: float) -> None:
+    window = settings.auth_rate_limit_window_seconds
+    while bucket and now - bucket[0] >= window:
+        bucket.popleft()
+
+
+def _enforce_auth_rate_limit(key: str) -> None:
+    now = time.time()
+    bucket = AUTH_RATE_LIMIT_BUCKETS[key]
+    _prune_auth_rate_limit_bucket(bucket, now)
+    if len(bucket) >= settings.auth_rate_limit_attempts:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many authentication attempts. Please wait a few minutes and try again.",
+        )
+
+
+def _record_auth_failure(key: str) -> None:
+    now = time.time()
+    bucket = AUTH_RATE_LIMIT_BUCKETS[key]
+    _prune_auth_rate_limit_bucket(bucket, now)
+    bucket.append(now)
+
+
+def _clear_auth_failures(key: str) -> None:
+    AUTH_RATE_LIMIT_BUCKETS.pop(key, None)
+
+
+def _validate_upload_file(file: UploadFile) -> None:
+    filename = file.filename or ""
+    suffix = Path(filename).suffix.lower()
+    if suffix not in settings.allowed_upload_extension_set:
+        allowed = ", ".join(sorted(settings.allowed_upload_extension_set))
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail=f"Unsupported file type. Allowed extensions: {allowed}.",
+        )
+
+    content_type = (file.content_type or "").lower()
+    if content_type and not (content_type in ALLOWED_UPLOAD_CONTENT_TYPES or content_type.startswith("text/")):
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail="Unsupported upload content type.",
+        )
+
+
+async def _read_validated_upload_bytes(file: UploadFile) -> bytes:
+    _validate_upload_file(file)
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Uploaded file is empty.")
+    if len(content) > settings.max_upload_bytes:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"Uploaded file exceeds the {settings.max_upload_bytes} byte limit.",
+        )
+    return content
 
 
 def _set_session_cookies(response: Response, access_token: str, refresh_token: str) -> None:
@@ -152,23 +309,38 @@ async def enforce_authentication(request: Request, call_next):
     path = request.url.path
 
     if path.startswith("/frontend") or path == "/health" or path == "/favicon.ico":
-        return await call_next(request)
+        response = await call_next(request)
+        _apply_security_headers(request, response)
+        if path.startswith("/frontend/"):
+            _apply_no_cache_headers(response)
+        return response
+
+    try:
+        _enforce_trusted_origin(request)
+    except HTTPException as exc:
+        response = JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
+        _apply_security_headers(request, response)
+        return response
 
     if path in PROTECTED_PAGE_ROUTES and get_optional_auth_context(request) is None:
-        return RedirectResponse(url="/sign-in", status_code=status.HTTP_303_SEE_OTHER)
+        response = RedirectResponse(url="/sign-in", status_code=status.HTTP_303_SEE_OTHER)
+        _apply_security_headers(request, response)
+        _apply_no_cache_headers(response)
+        return response
 
     if path.startswith("/api") and not path.startswith("/api/auth"):
         try:
             require_authenticated_user(request)
         except HTTPException as exc:
-            return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
+            response = JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
+            _apply_security_headers(request, response)
+            return response
 
     response = await call_next(request)
     _apply_refreshed_session_cookies(request, response)
-    if path in NO_CACHE_PATHS or path.startswith("/frontend/"):
-        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
-        response.headers["Pragma"] = "no-cache"
-        response.headers["Expires"] = "0"
+    _apply_security_headers(request, response)
+    if path in NO_CACHE_PATHS or path.startswith("/frontend/") or path.startswith(NO_CACHE_API_PREFIXES):
+        _apply_no_cache_headers(response)
     return response
 
 
@@ -184,8 +356,16 @@ for route_path, filename in FRONTEND_PAGE_ROUTES.items():
 
 
 @app.post("/api/auth/sign-in", response_model=AuthSessionResponse)
-def sign_in(payload: AuthSignInRequest):
-    access_token, refresh_token = sign_in_with_password(payload.email, payload.password)
+def sign_in(payload: AuthSignInRequest, request: Request):
+    rate_limit_key = _auth_rate_limit_key(request, payload.email)
+    _enforce_auth_rate_limit(rate_limit_key)
+    try:
+        access_token, refresh_token = sign_in_with_password(payload.email, payload.password)
+    except AuthenticationError:
+        _record_auth_failure(rate_limit_key)
+        raise
+
+    _clear_auth_failures(rate_limit_key)
     context = get_auth_context_from_access_token(access_token)
 
     response = JSONResponse(
@@ -199,8 +379,16 @@ def sign_in(payload: AuthSignInRequest):
 
 
 @app.post("/api/auth/sign-up", response_model=AuthSessionResponse)
-def sign_up(payload: AuthSignUpRequest):
-    access_token, refresh_token, user = sign_up_with_password(payload.email, payload.password)
+def sign_up(payload: AuthSignUpRequest, request: Request):
+    rate_limit_key = _auth_rate_limit_key(request, payload.email)
+    _enforce_auth_rate_limit(rate_limit_key)
+    try:
+        access_token, refresh_token, user = sign_up_with_password(payload.email, payload.password)
+    except AuthenticationError:
+        _record_auth_failure(rate_limit_key)
+        raise
+
+    _clear_auth_failures(rate_limit_key)
 
     user_id = str(getattr(user, "id", "") or "")
     email = getattr(user, "email", None)
@@ -250,6 +438,20 @@ def auth_session(request: Request, response: Response):
     )
 
 
+@app.get("/api/privacy-consent", response_model=UserDataConsentResponse)
+def get_privacy_consent(request: Request, service: ResearchBackendService = Depends(get_service)):
+    context = require_authenticated_user(request)
+    return service.get_user_data_consent(context.user_id)
+
+
+@app.put("/api/privacy-consent", response_model=UserDataConsentResponse)
+def update_privacy_consent(
+    payload: UserDataConsentUpdateRequest, request: Request, service: ResearchBackendService = Depends(get_service)
+):
+    context = require_authenticated_user(request)
+    return service.set_user_data_consent(context.user_id, payload.status)
+
+
 @app.get("/api/studies", response_model=list[StudyRecord])
 def list_studies(request: Request, service: ResearchBackendService = Depends(get_service)):
     context = require_authenticated_user(request)
@@ -295,8 +497,11 @@ def extract_persona(payload: PersonaExtractRequest, request: Request, service: R
 
 @app.post("/api/personas/extract-upload", response_model=UploadTextResponse)
 async def extract_persona_upload(file: UploadFile = File(...), service: ResearchBackendService = Depends(get_service)):
-    content = await file.read()
-    text = service.extract_persona_text_from_upload(file.filename or "upload", file.content_type or "", content)
+    content = await _read_validated_upload_bytes(file)
+    try:
+        text = service.extract_persona_text_from_upload(file.filename or "upload", file.content_type or "", content)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     return UploadTextResponse(text=text)
 
 
@@ -307,15 +512,21 @@ def extract_questions(payload: QuestionExtractRequest, service: ResearchBackendS
 
 @app.post("/api/question-guides/extract-upload", response_model=UploadTextResponse)
 async def extract_questions_upload(file: UploadFile = File(...), service: ResearchBackendService = Depends(get_service)):
-    content = await file.read()
-    text = service.extract_text_from_upload(file.filename or "upload", file.content_type or "", content)
+    content = await _read_validated_upload_bytes(file)
+    try:
+        text = service.extract_text_from_upload(file.filename or "upload", file.content_type or "", content)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     return UploadTextResponse(text=text)
 
 
 @app.post("/api/protocols/extract-upload", response_model=UploadTextResponse)
 async def extract_protocol_upload(file: UploadFile = File(...), service: ResearchBackendService = Depends(get_service)):
-    content = await file.read()
-    text = service.extract_text_from_upload(file.filename or "upload", file.content_type or "", content)
+    content = await _read_validated_upload_bytes(file)
+    try:
+        text = service.extract_text_from_upload(file.filename or "upload", file.content_type or "", content)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     return UploadTextResponse(text=text)
 
 
@@ -341,8 +552,11 @@ def create_transcript(payload: TranscriptCreate, request: Request, service: Rese
 
 @app.post("/api/transcripts/extract-upload", response_model=UploadTextResponse)
 async def extract_transcript_upload(file: UploadFile = File(...), service: ResearchBackendService = Depends(get_service)):
-    content = await file.read()
-    text = service.extract_text_from_upload(file.filename or "upload", file.content_type or "", content)
+    content = await _read_validated_upload_bytes(file)
+    try:
+        text = service.extract_text_from_upload(file.filename or "upload", file.content_type or "", content)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     return UploadTextResponse(text=text)
 
 

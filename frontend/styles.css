@@ -414,6 +414,44 @@ a:focus-visible {
   font-size: 0.74rem;
 }
 
+.consent-banner {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 90;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 1rem;
+  width: min(680px, calc(100vw - 32px));
+  padding: 1rem 1.1rem;
+  border: 1px solid rgba(124, 58, 237, 0.24);
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.96);
+  backdrop-filter: blur(18px);
+  box-shadow: 0 18px 40px rgba(109, 40, 217, 0.16);
+}
+
+.consent-banner__copy {
+  display: grid;
+  gap: 0.28rem;
+}
+
+.consent-banner__copy strong {
+  font-size: 1rem;
+  font-weight: 800;
+}
+
+.consent-banner__copy p {
+  margin: 0;
+  color: var(--text-secondary);
+}
+
+.consent-banner__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
 .page {
   display: grid;
   gap: 1.5rem;
@@ -1334,6 +1372,18 @@ pre {
   .section-heading {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .consent-banner {
+    right: 10px;
+    bottom: 10px;
+    left: 10px;
+    width: auto;
+    grid-template-columns: 1fr;
+  }
+
+  .consent-banner__actions {
+    flex-wrap: wrap;
   }
 }
 

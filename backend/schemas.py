@@ -1,7 +1,8 @@
 from datetime import datetime
+from typing import Literal
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class StudyBase(BaseModel):
@@ -161,14 +162,34 @@ class HealthResponse(BaseModel):
     storage_backend: str
 
 
-class AuthSignInRequest(BaseModel):
+class AuthCredentialsBase(BaseModel):
     email: str
+
+    @field_validator("email")
+    @classmethod
+    def normalize_email(cls, value: str) -> str:
+        email = value.strip().lower()
+        if "@" not in email or email.startswith("@") or email.endswith("@"):
+            raise ValueError("Enter a valid email address.")
+        return email
+
+
+class AuthSignInRequest(AuthCredentialsBase):
     password: str
 
 
-class AuthSignUpRequest(BaseModel):
-    email: str
+class AuthSignUpRequest(AuthCredentialsBase):
     password: str
+
+    @field_validator("password")
+    @classmethod
+    def validate_password(cls, value: str) -> str:
+        password = value or ""
+        if len(password) < 12:
+            raise ValueError("Password must be at least 12 characters.")
+        if password.strip() != password:
+            raise ValueError("Password cannot start or end with spaces.")
+        return password
 
 
 class AuthUserResponse(BaseModel):
@@ -181,3 +202,14 @@ class AuthSessionResponse(BaseModel):
     authenticated: bool
     user: AuthUserResponse | None = None
     message: str | None = None
+
+
+class UserDataConsentUpdateRequest(BaseModel):
+    status: Literal["accepted", "declined"]
+
+
+class UserDataConsentResponse(BaseModel):
+    status: Literal["pending", "accepted", "declined"]
+    allows_analytics: bool
+    consented_at: datetime | None = None
+    updated_at: datetime | None = None

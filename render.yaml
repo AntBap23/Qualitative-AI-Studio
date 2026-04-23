@@ -25,3 +25,9 @@ services:
         value: "true"
       - key: AUTH_COOKIE_SAMESITE
         value: "lax"
+      - key: MAX_UPLOAD_BYTES
+        value: "5242880"
+      - key: AUTH_RATE_LIMIT_ATTEMPTS
+        value: "8"
+      - key: AUTH_RATE_LIMIT_WINDOW_SECONDS
+        value: "300"

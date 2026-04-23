@@ -35,6 +35,10 @@ DEFAULT_PROTOCOL = {
     ),
 }
 
+CONSENT_PENDING = "pending"
+CONSENT_ACCEPTED = "accepted"
+CONSENT_DECLINED = "declined"
+
 
 class ResearchBackendService:
     def __init__(self, storage: StorageAdapter):
@@ -64,6 +68,45 @@ class ResearchBackendService:
         if study_id is None:
             return
         self.get_item("studies", study_id, user_id)
+
+    def get_user_data_consent(self, user_id: str) -> dict[str, Any]:
+        records = self.storage.list_items("user_data_consents", filters=self._owner_filters(user_id))
+        if not records:
+            return {
+                "status": CONSENT_PENDING,
+                "allows_analytics": False,
+                "consented_at": None,
+                "updated_at": None,
+            }
+
+        record = records[0]
+        status = record.get("status") or CONSENT_PENDING
+        return {
+            "status": status,
+            "allows_analytics": status == CONSENT_ACCEPTED,
+            "consented_at": record.get("consented_at"),
+            "updated_at": record.get("updated_at"),
+        }
+
+    def set_user_data_consent(self, user_id: str, status: str) -> dict[str, Any]:
+        existing_records = self.storage.list_items("user_data_consents", filters=self._owner_filters(user_id))
+        record = existing_records[0] if existing_records else {}
+        consented_at = utc_now().isoformat() if status == CONSENT_ACCEPTED else None
+
+        record.update(
+            {
+                "owner_user_id": user_id,
+                "status": status,
+                "consented_at": consented_at,
+            }
+        )
+        saved = self.storage.upsert_item("user_data_consents", record)
+        return {
+            "status": saved.get("status") or CONSENT_PENDING,
+            "allows_analytics": saved.get("status") == CONSENT_ACCEPTED,
+            "consented_at": saved.get("consented_at"),
+            "updated_at": saved.get("updated_at"),
+        }
 
     def save_protocol(self, protocol: dict[str, Any], user_id: str) -> dict[str, Any]:
         self.ensure_study_exists(protocol.get("study_id"), user_id)
@@ -305,7 +348,10 @@ class ResearchBackendService:
             or filename.lower().endswith(".docx")
         ):
             return extract_text_from_docx(buffer)
-        return file_bytes.decode("utf-8")
+        try:
+            return file_bytes.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise ValueError("Uploaded text files must be valid UTF-8.") from exc
 
     def extract_persona_text_from_upload(self, filename: str, content_type: str, file_bytes: bytes) -> str:
         buffer = io.BytesIO(file_bytes)
@@ -317,7 +363,10 @@ class ResearchBackendService:
             or filename.lower().endswith(".docx")
         ):
             return extract_text_from_docx(buffer)
-        return file_bytes.decode("utf-8")
+        try:
+            return file_bytes.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise ValueError("Uploaded text files must be valid UTF-8.") from exc
 
     @staticmethod
     def _extract_json_payload(raw_text: str) -> dict[str, Any] | None:

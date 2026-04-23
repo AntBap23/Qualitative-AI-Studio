@@ -31,6 +31,10 @@ The product is designed for researchers who want AI-assisted interviewing and an
 - protected UI routes redirect unauthenticated users to `/sign-in`
 - protected API routes enforce auth in middleware
 - auth cookies are HttpOnly and configurable (`secure`, `samesite`)
+- unsafe API requests are origin-checked to reduce CSRF risk
+- security headers are applied centrally (CSP, frame blocking, nosniff, referrer policy, HSTS on HTTPS)
+- auth endpoints are rate limited in-process to slow brute-force attempts
+- uploads are restricted by extension/content type and capped by byte size
 - Supabase/storage/auth errors are sanitized before returning to UI
 
 ## Local Development
@@ -71,6 +75,10 @@ Open:
 - `AUTH_REFRESH_COOKIE_NAME`
 - `AUTH_COOKIE_SECURE`
 - `AUTH_COOKIE_SAMESITE`
+- `MAX_UPLOAD_BYTES`
+- `ALLOWED_UPLOAD_EXTENSIONS`
+- `AUTH_RATE_LIMIT_ATTEMPTS`
+- `AUTH_RATE_LIMIT_WINDOW_SECONDS`
 
 ## Render Deployment
 
