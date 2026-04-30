@@ -403,7 +403,11 @@ class ResearchBackendService:
                 },
             },
         }
-        headers = {"Content-Type": "application/json", "Accept": "application/json"}
+        headers = {
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "User-Agent": "QualitativeAIInterviewStudio-SupportWebhook/1.0",
+        }
         if settings.n8n_support_ticket_webhook_secret:
             headers["X-Support-Webhook-Secret"] = settings.n8n_support_ticket_webhook_secret
 
