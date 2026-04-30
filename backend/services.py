@@ -416,7 +416,19 @@ class ResearchBackendService:
         try:
             with urlopen(request, timeout=settings.n8n_support_ticket_timeout_seconds) as response:
                 raw_response = response.read().decode("utf-8")
-        except (HTTPError, TimeoutError, URLError, OSError) as exc:
+        except HTTPError as exc:
+            error_body = ""
+            try:
+                error_body = exc.read().decode("utf-8")[:1000]
+            except Exception:
+                error_body = ""
+            logger.warning(
+                "n8n support ticket triage failed; using fallback triage. Status: %s. Body: %s",
+                exc.code,
+                error_body or "<empty>",
+            )
+            return None
+        except (TimeoutError, URLError, OSError) as exc:
             logger.warning("n8n support ticket triage failed; using fallback triage. Error: %s", exc)
             return None
 
