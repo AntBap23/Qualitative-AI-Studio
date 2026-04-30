@@ -1752,77 +1752,29 @@ async function initComparisons(signal) {
   await refresh();
 }
 
-function supportTicketTitle(ticket) {
-  return `${ticket.subject || "Support ticket"} (${ticket.status || "triaged"})`;
-}
-
-function renderSupportTicketDetails(ticket) {
-  const details = el("div", { className: "ticket-detail" });
-  details.appendChild(el("strong", { text: "Agent summary" }));
-  details.appendChild(el("p", { text: ticket.ai_summary || "No summary generated." }));
-  details.appendChild(el("strong", { text: "Suggested response" }));
-  details.appendChild(el("p", { text: ticket.suggested_response || "No response draft generated." }));
-  details.appendChild(el("strong", { text: "Next action" }));
-  details.appendChild(el("p", { text: ticket.next_action || "Review the ticket manually." }));
-  return details;
-}
-
-function supportTicketCard(ticket) {
-  const card = resourceCard(
-    supportTicketTitle(ticket),
-    `${ticket.customer_name} • ${ticket.customer_email}`,
-    [
-      ticket.category || "other",
-      `${ticket.priority || "normal"} priority`,
-      ticket.escalation_required ? "Escalate" : "Agent can draft",
-      formatDate(ticket.created_at),
-    ],
-  );
-  card.appendChild(renderSupportTicketDetails(ticket));
-  return card;
-}
-
 function renderSupportAgentResult(container, ticket) {
   if (!container) return;
   if (!ticket) {
-    container.replaceChildren(makeEmptyNote("Submit a customer ticket to generate the first agent triage result."));
+    container.replaceChildren(makeEmptyNote("Submit a support request to see the response here."));
     return;
   }
 
   const result = el("article", { className: "support-agent-result" });
-  result.appendChild(el("span", { className: "panel-card__label", text: ticket.escalation_required ? "Escalation Recommended" : "Agent Draft Ready" }));
-  result.appendChild(el("h3", { text: ticket.subject || "Support ticket" }));
-  result.appendChild(renderSupportTicketDetails(ticket));
-  result.appendChild(
-    createMetaPills([
-      ticket.status || "triaged",
-      ticket.product_area || "General workspace",
-      ...(Array.isArray(ticket.tags) ? ticket.tags : []),
-    ]),
-  );
+  result.appendChild(el("span", { className: "panel-card__label", text: "Request received" }));
+  result.appendChild(el("h3", { text: ticket.subject || "Support request" }));
+  result.appendChild(el("p", { className: "support-response-copy", text: ticket.suggested_response || "Thanks. Your request has been received." }));
+  if (ticket.escalation_required) {
+    result.appendChild(el("p", { className: "muted-copy", text: "This request may need a support owner to review it before final resolution." }));
+  }
   container.replaceChildren(result);
 }
 
 async function initSupport(signal) {
   const form = document.getElementById("support-ticket-form");
   const output = document.getElementById("support-ticket-output");
-  const list = document.getElementById("support-ticket-list");
   const result = document.getElementById("support-agent-result");
 
-  async function refresh(latestTicket = null) {
-    const tickets = (await loadCollection("support-tickets")).sort(
-      (a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime(),
-    );
-    const escalationCount = tickets.filter((ticket) => ticket.escalation_required).length;
-    const draftCount = tickets.filter((ticket) => ticket.suggested_response).length;
-
-    setNodeContent(document.getElementById("support-total-count"), tickets.length);
-    setNodeContent(document.getElementById("support-escalation-count"), escalationCount);
-    setNodeContent(document.getElementById("support-resolution-count"), draftCount);
-
-    renderResourceCards(list, tickets, supportTicketCard);
-    renderSupportAgentResult(result, latestTicket || tickets[0] || null);
-  }
+  renderSupportAgentResult(result, null);
 
   form?.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -1840,17 +1792,17 @@ async function initSupport(signal) {
     };
 
     try {
-      startButtonLoading(submitButton, "Creating ticket...");
-      setMessageState(output, "Creating the ticket and running support triage...", { loading: true });
+      startButtonLoading(submitButton, "Submitting...");
+      setMessageState(output, "Submitting your request...", { loading: true });
       const record = await callApi("/api/support-tickets", {
         method: "POST",
         body: JSON.stringify(payload),
       });
-      setMessageState(output, `Ticket created and triaged: ${record.subject}`);
+      setMessageState(output, "Request submitted. Your response is ready.");
       form.reset();
       const productArea = form.querySelector('input[name="product_area"]');
       if (productArea) productArea.value = "Research workspace";
-      await refresh(record);
+      renderSupportAgentResult(result, record);
     } catch (error) {
       setMessageState(output, error.message);
     } finally {
@@ -1858,7 +1810,6 @@ async function initSupport(signal) {
     }
   }, { signal });
 
-  await refresh();
 }
 
 async function initSettings(signal) {

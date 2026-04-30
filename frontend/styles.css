@@ -959,7 +959,6 @@ a:focus-visible {
 .support-steps span {
   display: flex;
   align-items: center;
-  min-height: 48px;
   justify-content: center;
   min-height: 44px;
   padding: 0.62rem 0.75rem;
@@ -974,7 +973,7 @@ a:focus-visible {
 
 .support-steps {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0.55rem;
 }
 
@@ -991,17 +990,8 @@ a:focus-visible {
   font-size: 1.1rem;
 }
 
-.ticket-detail {
-  display: grid;
-  gap: 0.35rem;
-}
-
-.ticket-detail strong {
-  margin-top: 0.25rem;
+.support-response-copy {
   color: var(--text);
-  font-size: 0.78rem;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
 }
 
 .check-list {
