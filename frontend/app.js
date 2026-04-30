@@ -2,6 +2,7 @@ const STORAGE_KEY = "active-study-id";
 const PAGE_LABELS = {
   home: "Home",
   dashboard: "Dashboard",
+  support: "Support",
   studies: "Studies",
   workspace: "Workspace",
   protocol: "Protocol",
@@ -17,6 +18,7 @@ const PAGE_LABELS = {
 const PRIMARY_NAV = [
   { key: "home", label: "Home", href: "/", icon: "home" },
   { key: "dashboard", label: "Dashboard", href: "/dashboard", icon: "grid" },
+  { key: "support", label: "Support", href: "/support", icon: "message" },
   { key: "studies", label: "Studies", href: "/studies", icon: "folder" },
   { key: "workspace", label: "Workspace", href: "/workspace", icon: "layers" },
   { key: "protocol", label: "Protocol", href: "/protocol", icon: "clipboard" },
@@ -393,6 +395,8 @@ function iconSprite(name) {
       '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 6.5A2.5 2.5 0 0 1 8.8 4.4l8 5.1a2.5 2.5 0 0 1 0 4.2l-8 5.1A2.5 2.5 0 0 1 5 16.7z"/></svg>',
     chart:
       '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 19.5h14M8 17V11m4 6V6m4 11v-8"/></svg>',
+    message:
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5.5 5h13A2.5 2.5 0 0 1 21 7.5v7A2.5 2.5 0 0 1 18.5 17H10l-5 3v-3.5A2.5 2.5 0 0 1 3 14V7.5A2.5 2.5 0 0 1 5.5 5Zm2 4.5h9m-9 3h6"/></svg>',
     gear:
       '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 1.3 2.6 2.9.5.9 2.8 2.4 1.7-1.1 2.7 1.1 2.7-2.4 1.7-.9 2.8-2.9.5L12 21l-1.3-2.6-2.9-.5-.9-2.8-2.4-1.7 1.1-2.7-1.1-2.7 2.4-1.7.9-2.8 2.9-.5zm0 5.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Z"/></svg>',
     arrow:
@@ -1748,6 +1752,115 @@ async function initComparisons(signal) {
   await refresh();
 }
 
+function supportTicketTitle(ticket) {
+  return `${ticket.subject || "Support ticket"} (${ticket.status || "triaged"})`;
+}
+
+function renderSupportTicketDetails(ticket) {
+  const details = el("div", { className: "ticket-detail" });
+  details.appendChild(el("strong", { text: "Agent summary" }));
+  details.appendChild(el("p", { text: ticket.ai_summary || "No summary generated." }));
+  details.appendChild(el("strong", { text: "Suggested response" }));
+  details.appendChild(el("p", { text: ticket.suggested_response || "No response draft generated." }));
+  details.appendChild(el("strong", { text: "Next action" }));
+  details.appendChild(el("p", { text: ticket.next_action || "Review the ticket manually." }));
+  return details;
+}
+
+function supportTicketCard(ticket) {
+  const card = resourceCard(
+    supportTicketTitle(ticket),
+    `${ticket.customer_name} • ${ticket.customer_email}`,
+    [
+      ticket.category || "other",
+      `${ticket.priority || "normal"} priority`,
+      ticket.escalation_required ? "Escalate" : "Agent can draft",
+      formatDate(ticket.created_at),
+    ],
+  );
+  card.appendChild(renderSupportTicketDetails(ticket));
+  return card;
+}
+
+function renderSupportAgentResult(container, ticket) {
+  if (!container) return;
+  if (!ticket) {
+    container.replaceChildren(makeEmptyNote("Submit a customer ticket to generate the first agent triage result."));
+    return;
+  }
+
+  const result = el("article", { className: "support-agent-result" });
+  result.appendChild(el("span", { className: "panel-card__label", text: ticket.escalation_required ? "Escalation Recommended" : "Agent Draft Ready" }));
+  result.appendChild(el("h3", { text: ticket.subject || "Support ticket" }));
+  result.appendChild(renderSupportTicketDetails(ticket));
+  result.appendChild(
+    createMetaPills([
+      ticket.status || "triaged",
+      ticket.product_area || "General workspace",
+      ...(Array.isArray(ticket.tags) ? ticket.tags : []),
+    ]),
+  );
+  container.replaceChildren(result);
+}
+
+async function initSupport(signal) {
+  const form = document.getElementById("support-ticket-form");
+  const output = document.getElementById("support-ticket-output");
+  const list = document.getElementById("support-ticket-list");
+  const result = document.getElementById("support-agent-result");
+
+  async function refresh(latestTicket = null) {
+    const tickets = (await loadCollection("support-tickets")).sort(
+      (a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime(),
+    );
+    const escalationCount = tickets.filter((ticket) => ticket.escalation_required).length;
+    const draftCount = tickets.filter((ticket) => ticket.suggested_response).length;
+
+    setNodeContent(document.getElementById("support-total-count"), tickets.length);
+    setNodeContent(document.getElementById("support-escalation-count"), escalationCount);
+    setNodeContent(document.getElementById("support-resolution-count"), draftCount);
+
+    renderResourceCards(list, tickets, supportTicketCard);
+    renderSupportAgentResult(result, latestTicket || tickets[0] || null);
+  }
+
+  form?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const submitButton = form.querySelector('button[type="submit"]');
+    const formData = new FormData(form);
+    const payload = {
+      customer_name: String(formData.get("customer_name") || "").trim(),
+      customer_email: String(formData.get("customer_email") || "").trim(),
+      product_area: String(formData.get("product_area") || "").trim() || "General workspace",
+      category: String(formData.get("category") || "other"),
+      priority: String(formData.get("priority") || "normal"),
+      subject: String(formData.get("subject") || "").trim(),
+      description: String(formData.get("description") || "").trim(),
+      study_id: state.activeStudyId || null,
+    };
+
+    try {
+      startButtonLoading(submitButton, "Creating ticket...");
+      setMessageState(output, "Creating the ticket and running support triage...", { loading: true });
+      const record = await callApi("/api/support-tickets", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+      setMessageState(output, `Ticket created and triaged: ${record.subject}`);
+      form.reset();
+      const productArea = form.querySelector('input[name="product_area"]');
+      if (productArea) productArea.value = "Research workspace";
+      await refresh(record);
+    } catch (error) {
+      setMessageState(output, error.message);
+    } finally {
+      stopButtonLoading(submitButton);
+    }
+  }, { signal });
+
+  await refresh();
+}
+
 async function initSettings(signal) {
   const stateNode = document.getElementById("settings-state");
   if (stateNode) {
@@ -1922,6 +2035,9 @@ async function initializeCurrentPage() {
   switch (page) {
     case "dashboard":
       await initDashboard();
+      break;
+    case "support":
+      await initSupport(signal);
       break;
     case "studies":
       await initStudies(signal);

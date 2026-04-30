@@ -793,6 +793,15 @@ a:focus-visible {
   gap: 0.75rem;
 }
 
+.form-grid {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.form-grid--two {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .upload-form {
   padding: 1rem;
   border: 1px dashed var(--line-strong);
@@ -945,6 +954,54 @@ a:focus-visible {
 .quick-link:focus-visible {
   transform: translateX(2px);
   border-color: rgba(124, 58, 237, 0.34);
+}
+
+.support-steps span {
+  display: flex;
+  align-items: center;
+  min-height: 48px;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0.62rem 0.75rem;
+  border-color: rgba(124, 58, 237, 0.18);
+  border-radius: 14px;
+  background: var(--surface-soft);
+  color: var(--primary-strong);
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-align: center;
+}
+
+.support-steps {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.55rem;
+}
+
+.support-agent-result {
+  display: grid;
+  gap: 0.65rem;
+  padding: 1rem 1.05rem;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface-soft);
+}
+
+.support-agent-result h3 {
+  font-size: 1.1rem;
+}
+
+.ticket-detail {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.ticket-detail strong {
+  margin-top: 0.25rem;
+  color: var(--text);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
 }
 
 .check-list {
@@ -1289,13 +1346,15 @@ pre {
   .content-grid--two,
   .split-showcase,
   .metric-grid--dashboard,
-  .dashboard-layout {
+  .dashboard-layout,
+  .form-grid--two {
     grid-template-columns: 1fr;
   }
 
   .dashboard-entity-grid,
   .home-stages,
-  .hero__metrics {
+  .hero__metrics,
+  .support-steps {
     grid-template-columns: 1fr;
   }
 }

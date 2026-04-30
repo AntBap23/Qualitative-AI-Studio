@@ -14,6 +14,7 @@ The product is designed for researchers who want AI-assisted interviewing and an
 - generates structured comparison artifacts (tables + narrative summaries)
 - produces Gioia-oriented analysis outputs
 - exports simulation outputs in multiple formats
+- demonstrates customer support ticket intake and AI-agent triage workflow
 
 ## Architecture
 
@@ -62,9 +63,16 @@ Open:
 
 - `http://127.0.0.1:8000`
 
+Support ticket agent handoff context:
+
+- `docs/customer-support-ticket-agent-context.md`
+
 ## Required Environment Variables
 
 - `OPENAI_API_KEY`
+- `N8N_SUPPORT_TICKET_WEBHOOK_URL` (optional; when set, support tickets are triaged by n8n)
+- `N8N_SUPPORT_TICKET_WEBHOOK_SECRET` (optional shared secret sent as `X-Support-Webhook-Secret`)
+- `N8N_SUPPORT_TICKET_TIMEOUT_SECONDS`
 - `STORAGE_BACKEND` (`local` or `supabase`)
 - `LOCAL_STORAGE_ROOT`
 - `SUPABASE_URL` (required when `STORAGE_BACKEND=supabase`)

@@ -39,6 +39,8 @@ from backend.schemas import (
     SimulationResponse,
     StudyProtocol,
     StudyProtocolCreate,
+    SupportTicketCreate,
+    SupportTicketRecord,
     TranscriptCreate,
     TranscriptRecord,
     UploadTextResponse,
@@ -88,6 +90,7 @@ PUBLIC_PAGE_ROUTES = {"/", "/sign-in"}
 FRONTEND_PAGE_ROUTES = {
     "/": "index.html",
     "/dashboard": "dashboard.html",
+    "/support": "support.html",
     "/studies": "studies.html",
     "/workspace": "workspace.html",
     "/protocol": "protocol.html",
@@ -625,6 +628,22 @@ def create_comparison(payload: ComparisonRequest, request: Request, service: Res
 def list_comparisons(request: Request, study_id: str | None = None, service: ResearchBackendService = Depends(get_service)):
     context = require_authenticated_user(request)
     return service.list_collection("comparisons", context.user_id, study_id=study_id)
+
+
+@app.get("/api/support-tickets", response_model=list[SupportTicketRecord])
+def list_support_tickets(
+    request: Request, study_id: str | None = None, service: ResearchBackendService = Depends(get_service)
+):
+    context = require_authenticated_user(request)
+    return service.list_support_tickets(context.user_id, study_id=study_id)
+
+
+@app.post("/api/support-tickets", response_model=SupportTicketRecord)
+def create_support_ticket(
+    payload: SupportTicketCreate, request: Request, service: ResearchBackendService = Depends(get_service)
+):
+    context = require_authenticated_user(request)
+    return service.save_support_ticket(payload.model_dump(), context.user_id)
 
 
 @app.get("/api/simulations/{simulation_id}/exports/{file_type}")

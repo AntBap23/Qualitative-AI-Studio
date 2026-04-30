@@ -9,6 +9,9 @@ class BackendSettings(BaseSettings):
     api_title: str = "Qualitative AI Interview Studio API"
     api_version: str = "0.1.0"
     openai_api_key: str | None = Field(default=None, alias="OPENAI_API_KEY")
+    n8n_support_ticket_webhook_url: str | None = Field(default=None, alias="N8N_SUPPORT_TICKET_WEBHOOK_URL")
+    n8n_support_ticket_webhook_secret: str | None = Field(default=None, alias="N8N_SUPPORT_TICKET_WEBHOOK_SECRET")
+    n8n_support_ticket_timeout_seconds: float = Field(default=20.0, alias="N8N_SUPPORT_TICKET_TIMEOUT_SECONDS")
     storage_backend: str = Field(default="local", alias="STORAGE_BACKEND")
     local_storage_root: Path = Field(default=Path("backend_data"), alias="LOCAL_STORAGE_ROOT")
     supabase_url: str | None = Field(default=None, alias="SUPABASE_URL")

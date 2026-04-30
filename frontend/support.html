@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Support | Qualitative AI Interview Studio</title>
+    <link rel="stylesheet" href="/frontend/styles.css?v=2026-04-29-1" />
+  </head>
+  <body data-page="support">
+    <div class="site-shell">
+      <header class="site-header" data-site-header></header>
+
+      <main class="page page--support">
+        <section class="content-grid content-grid--two">
+          <article class="panel-card">
+            <span class="panel-card__label">Customer Ticket</span>
+            <h2>Create a support request</h2>
+            <form id="support-ticket-form" class="stack-form">
+              <label>
+                Customer name
+                <input type="text" name="customer_name" autocomplete="name" required />
+              </label>
+              <label>
+                Customer email
+                <input type="email" name="customer_email" autocomplete="email" required />
+              </label>
+              <label>
+                Product area
+                <input type="text" name="product_area" value="Research workspace" required />
+              </label>
+              <div class="form-grid form-grid--two">
+                <label>
+                  Category
+                  <select name="category">
+                    <option value="research-workflow">Research workflow</option>
+                    <option value="bug">Bug</option>
+                    <option value="account">Account</option>
+                    <option value="billing">Billing</option>
+                    <option value="feature">Feature request</option>
+                    <option value="other">Other</option>
+                  </select>
+                </label>
+                <label>
+                  Priority
+                  <select name="priority">
+                    <option value="normal">Normal</option>
+                    <option value="low">Low</option>
+                    <option value="high">High</option>
+                    <option value="urgent">Urgent</option>
+                  </select>
+                </label>
+              </div>
+              <label>
+                Subject
+                <input type="text" name="subject" required />
+              </label>
+              <label>
+                Description
+                <textarea name="description" rows="7" required></textarea>
+              </label>
+              <button class="button button--primary" type="submit">Create ticket</button>
+            </form>
+            <div id="support-ticket-output" class="message-box">No ticket submitted yet.</div>
+          </article>
+
+          <article class="panel-card support-agent-panel">
+            <span class="panel-card__label">Agent Workflow</span>
+            <h2>Latest triage result</h2>
+            <div class="support-steps">
+              <span>Submit</span>
+              <span>Triage</span>
+              <span>Respond</span>
+              <span>Escalate</span>
+            </div>
+            <div id="support-agent-result" class="stack-list">
+              <p class="muted-copy">The agent summary and response draft will appear after a customer submits a ticket.</p>
+            </div>
+          </article>
+        </section>
+
+        <section class="metric-grid metric-grid--dashboard">
+          <article class="metric-card">
+            <span class="metric-card__label">Tickets</span>
+            <strong id="support-total-count">0</strong>
+            <p class="muted-copy">Support requests in the current scope.</p>
+          </article>
+          <article class="metric-card metric-card--featured">
+            <span class="metric-card__label">Escalations</span>
+            <strong id="support-escalation-count">0</strong>
+            <p class="muted-copy">Tickets that should be routed to a human owner.</p>
+          </article>
+          <article class="metric-card">
+            <span class="metric-card__label">Agent Drafts</span>
+            <strong id="support-resolution-count">0</strong>
+            <p class="muted-copy">Generated response drafts ready for review.</p>
+          </article>
+        </section>
+
+        <section class="panel-card">
+          <div class="section-heading">
+            <div>
+              <span class="panel-card__label">Ticket Queue</span>
+              <h2>Recent customer requests</h2>
+            </div>
+          </div>
+          <div id="support-ticket-list" class="resource-list">
+            <p class="muted-copy">No support tickets loaded yet.</p>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="/frontend/app.js?v=2026-04-29-1" type="module"></script>
+  </body>
+</html>

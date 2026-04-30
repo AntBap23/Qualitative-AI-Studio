@@ -9,6 +9,12 @@ services:
     envVars:
       - key: OPENAI_API_KEY
         sync: false
+      - key: N8N_SUPPORT_TICKET_WEBHOOK_URL
+        sync: false
+      - key: N8N_SUPPORT_TICKET_WEBHOOK_SECRET
+        sync: false
+      - key: N8N_SUPPORT_TICKET_TIMEOUT_SECONDS
+        value: "20"
       - key: STORAGE_BACKEND
         value: supabase
       - key: LOCAL_STORAGE_ROOT

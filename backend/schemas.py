@@ -153,6 +153,41 @@ class ComparisonResponse(BaseModel):
     created_at: datetime
 
 
+class SupportTicketBase(BaseModel):
+    customer_name: str = Field(..., min_length=1, max_length=120)
+    customer_email: str = Field(..., min_length=3, max_length=180)
+    product_area: str = Field("General workspace", min_length=1, max_length=120)
+    category: Literal["bug", "account", "billing", "feature", "research-workflow", "other"] = "other"
+    priority: Literal["low", "normal", "high", "urgent"] = "normal"
+    subject: str = Field(..., min_length=1, max_length=180)
+    description: str = Field(..., min_length=10, max_length=5000)
+    study_id: str | None = None
+
+    @field_validator("customer_email")
+    @classmethod
+    def normalize_customer_email(cls, value: str) -> str:
+        email = value.strip().lower()
+        if "@" not in email or email.startswith("@") or email.endswith("@"):
+            raise ValueError("Enter a valid customer email address.")
+        return email
+
+
+class SupportTicketCreate(SupportTicketBase):
+    pass
+
+
+class SupportTicketRecord(SupportTicketBase):
+    id: str
+    status: Literal["new", "triaged", "waiting_on_customer", "resolved"]
+    ai_summary: str = ""
+    suggested_response: str = ""
+    next_action: str = ""
+    escalation_required: bool = False
+    tags: list[str] = Field(default_factory=list)
+    created_at: datetime
+    updated_at: datetime
+
+
 class UploadTextResponse(BaseModel):
     text: str
 
