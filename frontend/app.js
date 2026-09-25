@@ -18,15 +18,21 @@ const PAGE_LABELS = {
 const PRIMARY_NAV = [
   { key: "home", label: "Home", href: "/", icon: "home" },
   { key: "dashboard", label: "Dashboard", href: "/dashboard", icon: "grid" },
-  { key: "support", label: "Support", href: "/support", icon: "message" },
   { key: "studies", label: "Studies", href: "/studies", icon: "folder" },
   { key: "workspace", label: "Workspace", href: "/workspace", icon: "layers" },
+];
+
+const SETUP_NAV = [
   { key: "protocol", label: "Protocol", href: "/protocol", icon: "clipboard" },
   { key: "personas", label: "Personas", href: "/personas", icon: "users" },
   { key: "interview-guide", label: "Interview Guide", href: "/interview-guide", icon: "spark" },
   { key: "transcripts", label: "Transcripts", href: "/transcripts", icon: "file" },
+];
+
+const ANALYSIS_NAV = [
   { key: "simulations", label: "Simulations", href: "/simulations", icon: "play" },
   { key: "comparisons", label: "Comparisons", href: "/comparisons", icon: "chart" },
+  { key: "support", label: "Support", href: "/support", icon: "message" },
 ];
 
 const UTILITY_NAV = [{ key: "settings", label: "Settings", href: "/settings", icon: "gear" }];
@@ -42,6 +48,8 @@ const WORKSPACE_NAV = [
 ];
 
 const WORKSPACE_PAGES = new Set(WORKSPACE_NAV.map((item) => item.key));
+const SETUP_PAGES = new Set(SETUP_NAV.map((item) => item.key));
+const WORKFLOW_STAGES = ["Setup", "Generate", "Evaluate"];
 const PUBLIC_PAGES = new Set(["home", "sign-in"]);
 const CONSENT_PENDING = "pending";
 const CONSENT_ACCEPTED = "accepted";
@@ -401,6 +409,8 @@ function iconSprite(name) {
       '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 1.3 2.6 2.9.5.9 2.8 2.4 1.7-1.1 2.7 1.1 2.7-2.4 1.7-.9 2.8-2.9.5L12 21l-1.3-2.6-2.9-.5-.9-2.8-2.4-1.7 1.1-2.7-1.1-2.7 2.4-1.7.9-2.8 2.9-.5zm0 5.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Z"/></svg>',
     arrow:
       '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14m-5-5 5 5-5 5"/></svg>',
+    chevron:
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 9.5 5 5 5-5"/></svg>',
   };
   return sprites[name] || sprites.grid;
 }
@@ -437,14 +447,37 @@ function stopButtonLoading(button) {
   }
 }
 
-function makeEmptyNote(message) {
-  return el("div", { className: "empty-note", text: message });
+function makeEmptyNote(message, action = null) {
+  const note = el("div", { className: "empty-note empty-state" });
+  note.appendChild(el("p", { text: message }));
+  if (action?.label && action?.href) {
+    note.appendChild(
+      el("a", {
+        className: "button button--primary empty-state__action",
+        text: action.label,
+        attrs: { href: action.href },
+      }),
+    );
+  }
+  return note;
 }
 
 function createMetaPills(items) {
   const row = el("div", { className: "meta-row" });
   items.forEach((item) => row.appendChild(el("span", { className: "pill", text: item })));
   return row;
+}
+
+function appendCardAction(card, label, href, secondary = false) {
+  if (!card || !label || !href) return card;
+  card.appendChild(
+    el("a", {
+      className: `button ${secondary ? "button--secondary" : "button--primary"} resource-card__action`,
+      text: label,
+      attrs: { href },
+    }),
+  );
+  return card;
 }
 
 async function signOutCurrentSession() {
@@ -525,15 +558,32 @@ function renderHeader() {
   brand.appendChild(brandCopy);
 
   const nav = el("nav", { className: "sidebar-nav", attrs: { "aria-label": "Application navigation" } });
-  PRIMARY_NAV.forEach((item) => {
+  const appendNavLink = (container, item, className = "sidebar-nav__link") => {
     const link = el("a", {
-      className: `sidebar-nav__link${isTopNavActive(item.key) ? " is-active" : ""}`,
+      className: `${className}${isTopNavActive(item.key) ? " is-active" : ""}`,
       attrs: { href: item.href, title: item.label },
     });
     link.appendChild(el("span", { className: "sidebar-nav__icon", html: iconSprite(item.icon) }));
     link.appendChild(el("span", { className: "sidebar-nav__label", text: item.label }));
-    nav.appendChild(link);
+    container.appendChild(link);
+  };
+
+  PRIMARY_NAV.forEach((item) => appendNavLink(nav, item));
+
+  const setupGroup = el("details", {
+    className: `sidebar-nav__group${SETUP_PAGES.has(page) ? " is-active" : ""}`,
+    attrs: { open: SETUP_PAGES.has(page) },
   });
+  const setupSummary = el("summary", { className: "sidebar-nav__group-toggle", attrs: { title: "Study setup" } });
+  setupSummary.appendChild(el("span", { className: "sidebar-nav__icon", html: iconSprite("clipboard") }));
+  setupSummary.appendChild(el("span", { className: "sidebar-nav__label", text: "Study setup" }));
+  setupSummary.appendChild(el("span", { className: "sidebar-nav__chevron", html: iconSprite("chevron") }));
+  const setupLinks = el("div", { className: "sidebar-nav__subnav" });
+  SETUP_NAV.forEach((item) => appendNavLink(setupLinks, item, "sidebar-nav__sublink"));
+  setupGroup.append(setupSummary, setupLinks);
+  nav.appendChild(setupGroup);
+
+  ANALYSIS_NAV.forEach((item) => appendNavLink(nav, item));
 
   const utilityNav = el("nav", { className: "sidebar-nav sidebar-nav--utility", attrs: { "aria-label": "Utility navigation" } });
   UTILITY_NAV.forEach((item) => {
@@ -559,10 +609,16 @@ function renderHeader() {
 
   const utility = el("div", { className: "header-utility" });
   const switcher = el("div", { className: "study-switcher" });
-  const selectLabel = el("label");
-  selectLabel.appendChild(el("span", { className: "field-label", text: "Active Study" }));
-  const select = el("select", { attrs: { id: "global-study-select" } });
-  select.appendChild(el("option", { text: "All studies / unscoped", attrs: { value: "" } }));
+  const switcherTop = el("div", { className: "study-switcher__top" });
+  switcherTop.appendChild(el("span", { className: "field-label", text: "Active study" }));
+  switcherTop.appendChild(
+    el("span", {
+      className: `study-status${currentStudy() ? " is-active" : " is-empty"}`,
+      text: currentStudy() ? "Active workspace" : "Selection needed",
+    }),
+  );
+  const select = el("select", { attrs: { id: "global-study-select", "aria-label": "Active study" } });
+  select.appendChild(el("option", { text: "Choose a study", attrs: { value: "" } }));
   state.studies.forEach((study) => {
     select.appendChild(el("option", { text: study.name, attrs: { value: study.id } }));
   });
@@ -571,8 +627,7 @@ function renderHeader() {
     setActiveStudyId(select.value);
     await refreshCurrentPage();
   });
-  selectLabel.appendChild(select);
-  switcher.appendChild(selectLabel);
+  switcher.append(switcherTop, select);
 
   const account = el("div", { className: "account-chip" });
   account.appendChild(el("span", { className: "account-chip__avatar", text: userInitials(state.auth.user) }));
@@ -688,6 +743,64 @@ function renderWorkspaceNav() {
   });
 }
 
+function workflowStageIndex() {
+  if (page === "comparisons") return 2;
+  if (page === "simulations") return 1;
+  return 0;
+}
+
+function updateWorkflowProgress(stageIndex) {
+  document.querySelectorAll(".workflow-progress__step").forEach((item, index) => {
+    item.classList.toggle("is-complete", index < stageIndex);
+    item.classList.toggle("is-active", index === stageIndex);
+    item.classList.toggle("is-upcoming", index > stageIndex);
+  });
+}
+
+function renderPageContext() {
+  const main = document.querySelector("main.page");
+  if (!main) return;
+  main.querySelector(".page-context")?.remove();
+
+  const contextPages = new Set(["dashboard", "studies", ...WORKSPACE_PAGES]);
+  if (!contextPages.has(page)) return;
+
+  const context = el("section", { className: "page-context", attrs: { "aria-label": "Workspace context" } });
+  const breadcrumbs = el("nav", { className: "breadcrumbs", attrs: { "aria-label": "Breadcrumb" } });
+
+  if (WORKSPACE_PAGES.has(page)) {
+    breadcrumbs.appendChild(el("a", { text: "Studies", attrs: { href: "/studies" } }));
+    breadcrumbs.appendChild(el("span", { className: "breadcrumbs__separator", text: "/" }));
+    breadcrumbs.appendChild(
+      el("a", {
+        text: currentStudy()?.name || "Choose a study",
+        attrs: { href: currentStudy() ? "/workspace" : "/studies" },
+      }),
+    );
+    if (page !== "workspace") {
+      breadcrumbs.appendChild(el("span", { className: "breadcrumbs__separator", text: "/" }));
+      breadcrumbs.appendChild(el("strong", { text: PAGE_LABELS[page] || page }));
+    }
+  } else {
+    breadcrumbs.appendChild(el("strong", { text: page === "dashboard" ? "Research workflow" : "Study portfolio" }));
+  }
+
+  const stageIndex = workflowStageIndex();
+  const progress = el("ol", { className: "workflow-progress", attrs: { "aria-label": "Research workflow progress" } });
+  const stageHrefs = ["/workspace", "/simulations", "/comparisons"];
+  WORKFLOW_STAGES.forEach((stage, index) => {
+    const status = index < stageIndex ? "is-complete" : index === stageIndex ? "is-active" : "is-upcoming";
+    const item = el("li", { className: `workflow-progress__step ${status}` });
+    item.appendChild(el("span", { className: "workflow-progress__dot", text: String(index + 1) }));
+    item.appendChild(el("a", { text: stage, attrs: { href: stageHrefs[index] } }));
+    progress.appendChild(item);
+  });
+
+  context.append(breadcrumbs, progress);
+  main.prepend(context);
+  updateWorkflowProgress(stageIndex);
+}
+
 function isTopNavActive(key) {
   return page === key;
 }
@@ -696,15 +809,18 @@ function requireActiveStudy(containerId, message) {
   if (currentStudy()) return false;
   const node = document.getElementById(containerId);
   if (node) {
-    node.replaceChildren(makeEmptyNote(message));
+    node.replaceChildren(makeEmptyNote(message, { label: "Create or select a study", href: "/studies" }));
   }
   return true;
 }
 
-function renderResourceCards(container, items, formatter) {
+function renderResourceCards(container, items, formatter, emptyState = {}) {
+  if (!container) return;
   container.replaceChildren();
   if (!items.length) {
-    container.appendChild(makeEmptyNote("No records found in the current scope."));
+    container.appendChild(
+      makeEmptyNote(emptyState.message || "No records found in the current scope.", emptyState.action || null),
+    );
     return;
   }
   items.forEach((item) => container.appendChild(formatter(item)));
@@ -929,6 +1045,38 @@ function dashboardEntityCard({ label, title, count, copy, href, icon, meta }) {
   return card;
 }
 
+function nextStepForWorkspace({ active, protocols, personas, guides, transcripts, simulations, comparisons }) {
+  if (!active) {
+    return {
+      title: state.studies.length ? "Choose an active study" : "Create your first study",
+      copy: state.studies.length
+        ? "Select the study you want to continue so every workspace view is properly scoped."
+        : "Start with a named research workspace, then build the protocol and source assets inside it.",
+      label: state.studies.length ? "Choose study" : "Create study",
+      href: "/studies",
+    };
+  }
+  if (!protocols.length) {
+    return { title: "Define the protocol", copy: "Set the shared context, interview style, and analysis focus.", label: "Create protocol", href: "/protocol" };
+  }
+  if (!personas.length) {
+    return { title: "Prepare participant personas", copy: "Ground the simulation in specific participant context.", label: "Create personas", href: "/personas" };
+  }
+  if (!guides.length) {
+    return { title: "Build the interview guide", copy: "Create the shared question structure used across interviews.", label: "Build guide", href: "/interview-guide" };
+  }
+  if (!simulations.length) {
+    return { title: "Run a simulation", copy: "Your core setup is ready for a generated interview.", label: "Run simulation", href: "/simulations" };
+  }
+  if (!transcripts.length) {
+    return { title: "Add a real transcript", copy: "Load real interview evidence before evaluating the simulation.", label: "Add transcript", href: "/transcripts" };
+  }
+  if (!comparisons.length) {
+    return { title: "Generate a comparison", copy: "Pair a transcript and simulation to inspect alignment and gaps.", label: "Compare evidence", href: "/comparisons" };
+  }
+  return { title: "Continue the evidence review", copy: "Open the latest comparison and add researcher notes to the strongest themes.", label: "Review comparisons", href: "/comparisons" };
+}
+
 async function loadStudies() {
   state.studies = await callApi("/api/studies");
   if (state.activeStudyId && !state.studies.some((study) => study.id === state.activeStudyId)) {
@@ -965,6 +1113,8 @@ async function initDashboard() {
             ? "Comparison setup"
             : "Analysis in progress";
 
+  updateWorkflowProgress(comparisons.length ? 2 : simulations.length ? 1 : 0);
+
   setNodeContent(document.getElementById("dashboard-studies-count"), state.studies.length);
   setNodeContent(document.getElementById("dashboard-assets-count"), setupAssets);
   setNodeContent(document.getElementById("dashboard-analysis-count"), analysisRuns);
@@ -977,8 +1127,8 @@ async function initDashboard() {
   setNodeContent(
     document.getElementById("dashboard-greeting-copy"),
     active
-      ? `Your current workspace is scoped to ${active.name}. Review setup coverage, recent records, and the next recommended move.`
-      : "Choose a study from the top bar to scope the dashboard and unlock study-specific workflow guidance.",
+      ? `${active.name} is active. Continue from the recommended next move or review the latest evidence.`
+      : "Choose a study to turn this dashboard into a focused research workspace.",
   );
   setNodeContent(document.getElementById("dashboard-active-study"), active ? active.name : "No study selected");
   setNodeContent(document.getElementById("dashboard-active-stage"), workflowStage);
@@ -1077,9 +1227,34 @@ async function initDashboard() {
     ...comparisons.map((item) => ({ label: "Comparison", name: `Comparison ${item.id.slice(0, 8)}`, created_at: item.created_at })),
   ].sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
 
+  const nextStep = nextStepForWorkspace({ active, protocols, personas, guides, transcripts, simulations, comparisons });
+  const heroActivity = document.getElementById("dashboard-hero-activity");
+  if (heroActivity) {
+    const latest = recentRecords[0];
+    const latestItem = el("div", { className: "dashboard-hero-activity__item" });
+    latestItem.appendChild(el("span", { text: latest ? "Latest activity" : "Workspace activity" }));
+    latestItem.appendChild(el("strong", { text: latest ? latest.name : "No records yet" }));
+    latestItem.appendChild(
+      el("small", {
+        text: latest ? `${latest.label} • ${formatRelativeDate(latest.created_at)}` : "Create the first study record to begin the activity trail.",
+      }),
+    );
+
+    const nextItem = el("div", { className: "dashboard-hero-activity__item dashboard-hero-activity__item--action" });
+    nextItem.appendChild(el("span", { text: "Recommended next move" }));
+    nextItem.appendChild(el("strong", { text: nextStep.title }));
+    nextItem.appendChild(el("a", { text: nextStep.label, attrs: { href: nextStep.href } }));
+    heroActivity.replaceChildren(latestItem, nextItem);
+  }
+
   const collections = document.getElementById("dashboard-collections");
   if (!recentRecords.length) {
-    collections.replaceChildren(makeEmptyNote("No scoped records yet. Start by creating a study asset."));
+    collections.replaceChildren(
+      makeEmptyNote("No scoped records yet. Your latest study activity will appear here.", {
+        label: nextStep.label,
+        href: nextStep.href,
+      }),
+    );
   } else {
     collections.replaceChildren(
       ...recentRecords.slice(0, 4).map((record) =>
@@ -1089,25 +1264,11 @@ async function initDashboard() {
   }
 
   const nextSteps = document.getElementById("dashboard-next-steps");
-  const nextStepCards = [];
-  if (!active) {
-    nextStepCards.push(resourceCard("Select a study", "Use the active study control in the top bar to focus the workspace."));
-  } else if (!protocols.length) {
-    nextStepCards.push(resourceCard("Define protocol", "Start in Protocol to establish study context, interview style, and consistency rules.", ["Recommended next move"]));
-  } else if (!personas.length) {
-    nextStepCards.push(resourceCard("Prepare personas", "Extract participant profiles from source material so the study can move into simulation.", ["Recommended next move"]));
-  } else if (!guides.length) {
-    nextStepCards.push(resourceCard("Build interview guide", "Save a shared guide so simulations follow the same question structure.", ["Recommended next move"]));
-  } else if (!simulations.length) {
-    nextStepCards.push(resourceCard("Run simulations", "The core study assets exist. Generate simulated interviews next.", ["Recommended next move"]));
-  } else if (!transcripts.length) {
-    nextStepCards.push(resourceCard("Load transcripts", "Add real interview material before generating comparisons.", ["Recommended next move"]));
-  } else if (!comparisons.length) {
-    nextStepCards.push(resourceCard("Generate comparisons", "Pair transcripts and simulations to produce structured comparison reports.", ["Recommended next move"]));
-  } else {
-    nextStepCards.push(resourceCard("Continue review", "Comparison artifacts already exist. Review the latest report and export any simulations you need.", ["Current focus"]));
-  }
-  nextStepCards.push(resourceCard("Open workspace", "Use the workspace overview to inspect the full study pipeline and quick links.", ["Shared navigation"]));
+  const recommendedCard = resourceCard(nextStep.title, nextStep.copy, ["Recommended next move"]);
+  appendCardAction(recommendedCard, nextStep.label, nextStep.href);
+  const workspaceCard = resourceCard("Open workspace", "Inspect setup coverage and move between every stage of the active study.", ["Workflow overview"]);
+  appendCardAction(workspaceCard, "Open workspace", "/workspace", true);
+  const nextStepCards = [recommendedCard, workspaceCard];
   nextSteps.replaceChildren(...nextStepCards);
 }
 
@@ -1132,7 +1293,10 @@ async function initStudies() {
           `Created ${formatDate(active.created_at)}`,
           "Current active study",
         ])
-      : makeEmptyNote("No study selected yet."),
+      : makeEmptyNote("No study is active yet.", {
+          label: state.studies.length ? "Choose from the library" : "Create your first study",
+          href: state.studies.length ? "#study-list" : "#study-create-form",
+        }),
   );
 
   renderResourceCards(list, state.studies, (study) => {
@@ -1151,6 +1315,9 @@ async function initStudies() {
     });
     card.appendChild(button);
     return card;
+  }, {
+    message: "No studies yet. Create your first study to start a research workflow.",
+    action: { label: "Create your first study", href: "#study-create-form" },
   });
 
   const form = document.getElementById("study-create-form");
@@ -1193,16 +1360,24 @@ async function initWorkspace() {
   const workflow = document.getElementById("workspace-workflow");
 
   if (!currentStudy()) {
-    workflow.replaceChildren(makeEmptyNote("Select a study from the top bar to unlock workspace details."));
+    workflow.replaceChildren(
+      makeEmptyNote("Select a study to unlock its workflow, assets, and analysis status.", {
+        label: "Create or select a study",
+        href: "/studies",
+      }),
+    );
     return;
   }
 
-  const [protocols, personas, guides, comparisons] = await Promise.all([
+  const [protocols, personas, guides, simulations, comparisons] = await Promise.all([
     loadCollection("protocols"),
     loadCollection("personas"),
     loadCollection("question-guides"),
+    loadCollection("simulations"),
     loadCollection("comparisons"),
   ]);
+
+  updateWorkflowProgress(comparisons.length ? 2 : simulations.length ? 1 : 0);
 
   title.textContent = currentStudy().name;
   copy.textContent = currentStudy().description || "This study is now the active workspace for protocol, asset, and comparison work.";
@@ -1246,8 +1421,15 @@ async function initProtocols(signal) {
 
   async function refresh() {
     const protocols = await loadCollection("protocols");
-    renderResourceCards(list, protocols, (protocol) =>
-      resourceCard(protocol.name, protocol.analysis_focus || "No analysis focus provided.", [formatDate(protocol.created_at)]),
+    renderResourceCards(
+      list,
+      protocols,
+      (protocol) =>
+        resourceCard(protocol.name, protocol.analysis_focus || "No analysis focus provided.", [formatDate(protocol.created_at)]),
+      {
+        message: "No protocol has been saved for this study.",
+        action: { label: "Create protocol", href: "#protocol-form" },
+      },
     );
   }
 
@@ -1327,10 +1509,17 @@ async function initPersonas(signal) {
 
   async function refresh() {
     const personas = await loadCollection("personas");
-    renderResourceCards(list, personas, (persona) =>
-      resourceCard(persona.name, `${persona.job || "Participant role"} • ${persona.education || "Education not specified"}`, [
-        persona.personality || "No personality note",
-      ]),
+    renderResourceCards(
+      list,
+      personas,
+      (persona) =>
+        resourceCard(persona.name, `${persona.job || "Participant role"} • ${persona.education || "Education not specified"}`, [
+          persona.personality || "No personality note",
+        ]),
+      {
+        message: "No participant personas are available for this study.",
+        action: { label: "Create a persona", href: "#persona-form" },
+      },
     );
   }
 
@@ -1406,8 +1595,14 @@ async function initInterviewGuide(signal) {
 
   async function refresh() {
     const guides = await loadCollection("question-guides");
-    renderResourceCards(list, guides, (guide) =>
-      resourceCard(guide.name, `${guide.questions.length} question(s)`, [formatDate(guide.created_at)]),
+    renderResourceCards(
+      list,
+      guides,
+      (guide) => resourceCard(guide.name, `${guide.questions.length} question(s)`, [formatDate(guide.created_at)]),
+      {
+        message: "No interview guide has been saved for this study.",
+        action: { label: "Build an interview guide", href: "#questions-form" },
+      },
     );
   }
 
@@ -1510,10 +1705,17 @@ async function initTranscripts(signal) {
 
   async function refresh() {
     const transcripts = await loadCollection("transcripts");
-    renderResourceCards(list, transcripts, (transcript) =>
-      resourceCard(transcript.name, `${transcript.content.slice(0, 180)}${transcript.content.length > 180 ? "..." : ""}`, [
-        transcript.source_type || "text",
-      ]),
+    renderResourceCards(
+      list,
+      transcripts,
+      (transcript) =>
+        resourceCard(transcript.name, `${transcript.content.slice(0, 180)}${transcript.content.length > 180 ? "..." : ""}`, [
+          transcript.source_type || "text",
+        ]),
+      {
+        message: "No real interview transcripts are available for comparison.",
+        action: { label: "Add a transcript", href: "#transcript-form" },
+      },
     );
   }
 
@@ -1608,25 +1810,33 @@ async function initSimulations(signal) {
 
   async function refresh() {
     const simulations = await loadCollection("simulations");
-    renderResourceCards(list, simulations, (simulation) => {
-      const card = resourceCard(
-        `Simulation ${simulation.id.slice(0, 8)}`,
-        `${simulation.responses.length} response(s) captured`,
-        [formatDate(simulation.created_at)],
-      );
-      const exportsRow = el("div", { className: "meta-row" });
-      ["txt", "docx", "pdf", "html", "csv"].forEach((fileType) => {
-        exportsRow.appendChild(
-          el("a", {
-            className: "text-link",
-            text: `Export ${fileType.toUpperCase()}`,
-            attrs: { href: `/api/simulations/${simulation.id}/exports/${fileType}` },
-          }),
+    renderResourceCards(
+      list,
+      simulations,
+      (simulation) => {
+        const card = resourceCard(
+          `Simulation ${simulation.id.slice(0, 8)}`,
+          `${simulation.responses.length} response(s) captured`,
+          [formatDate(simulation.created_at)],
         );
-      });
-      card.appendChild(exportsRow);
-      return card;
-    });
+        const exportsRow = el("div", { className: "meta-row" });
+        ["txt", "docx", "pdf", "html", "csv"].forEach((fileType) => {
+          exportsRow.appendChild(
+            el("a", {
+              className: "text-link",
+              text: `Export ${fileType.toUpperCase()}`,
+              attrs: { href: `/api/simulations/${simulation.id}/exports/${fileType}` },
+            }),
+          );
+        });
+        card.appendChild(exportsRow);
+        return card;
+      },
+      {
+        message: "No AI interviews have been generated for this study.",
+        action: { label: "Run your first simulation", href: "#simulation-form" },
+      },
+    );
   }
 
   form?.addEventListener("submit", async (event) => {
@@ -1657,14 +1867,174 @@ async function initSimulations(signal) {
   await refresh();
 }
 
-function renderComparisonReport(container, payload) {
+function evidenceCoverage(item) {
+  const explicit = String(item.confidence || "").trim().toLowerCase();
+  if (["high", "medium", "low"].includes(explicit)) {
+    const score = explicit === "high" ? 90 : explicit === "medium" ? 65 : 35;
+    return { label: `${explicit[0].toUpperCase()}${explicit.slice(1)} confidence`, score, tone: explicit };
+  }
+
+  const checks = [
+    Boolean(item.real_evidence),
+    Boolean(item.ai_evidence),
+    Boolean(item.review_note),
+    Array.isArray(item.first_order_concepts) && item.first_order_concepts.length > 0,
+  ];
+  const score = Math.round((checks.filter(Boolean).length / checks.length) * 100);
+  const tone = score >= 75 ? "high" : score >= 50 ? "medium" : "low";
+  const label = tone === "high" ? "High confidence" : tone === "medium" ? "Moderate confidence" : "Limited confidence";
+  return { label, score, tone };
+}
+
+function buildEvidenceItems(payload) {
+  const themeReview = Array.isArray(payload.theme_review) ? payload.theme_review.filter(Boolean) : [];
+  if (themeReview.length) return themeReview;
+
+  const realQuotes = Array.isArray(payload.quotes?.real) ? payload.quotes.real : [];
+  const aiQuotes = Array.isArray(payload.quotes?.ai) ? payload.quotes.ai : [];
+  const quoteCount = Math.max(realQuotes.length, aiQuotes.length);
+  if (quoteCount) {
+    return Array.from({ length: quoteCount }, (_, index) => {
+      const real = realQuotes[index] || {};
+      const ai = aiQuotes[index] || {};
+      return {
+        theme: real.theme || ai.theme || `Evidence theme ${index + 1}`,
+        real_evidence: real.quote || "",
+        ai_evidence: ai.quote || "",
+        review_note: real.why_it_matters || ai.why_it_matters || "",
+      };
+    });
+  }
+
+  const table = Array.isArray(payload.comparison_table) ? payload.comparison_table : [];
+  return table.map((item, index) => ({
+    theme: item.theme || `Comparison theme ${index + 1}`,
+    real_evidence: item.real_pattern || "",
+    ai_evidence: item.ai_pattern || "",
+    review_note: item.research_implication || item.difference || "",
+  }));
+}
+
+function comparisonNoteKey(comparisonId, index) {
+  return `comparison-researcher-note:${state.auth.user?.id || "guest"}:${comparisonId || "latest"}:${index}`;
+}
+
+function evidenceSnippetCard(item, index, comparisonId) {
+  const coverage = evidenceCoverage(item);
+  const card = el("article", { className: "evidence-card" });
+  const header = el("div", { className: "evidence-card__header" });
+  const heading = el("div");
+  heading.appendChild(el("span", { className: "panel-card__label", text: item.dimension || `Theme ${index + 1}` }));
+  heading.appendChild(el("h3", { text: item.theme || "Evidence theme" }));
+  header.appendChild(heading);
+  header.appendChild(
+    el("span", {
+      className: `confidence-badge confidence-badge--${coverage.tone}`,
+      text: coverage.label,
+      attrs: { title: `${coverage.score}% evidence coverage across the real excerpt, AI excerpt, concepts, and review note.` },
+    }),
+  );
+
+  const snippets = el("div", { className: "evidence-card__snippets" });
+  const real = el("div", { className: "evidence-snippet evidence-snippet--real" });
+  real.appendChild(el("span", { text: "Real interview evidence" }));
+  real.appendChild(el("blockquote", { text: item.real_evidence || "No real-interview excerpt was returned for this theme." }));
+  const ai = el("div", { className: "evidence-snippet evidence-snippet--ai" });
+  ai.appendChild(el("span", { text: "AI interview evidence" }));
+  ai.appendChild(el("blockquote", { text: item.ai_evidence || "No AI-interview excerpt was returned for this theme." }));
+  snippets.append(real, ai);
+
+  const interpretation = el("div", { className: "evidence-card__interpretation" });
+  interpretation.appendChild(el("strong", { text: "Interpretive signal" }));
+  interpretation.appendChild(el("p", { text: item.review_note || "Add a researcher note to document how this evidence should shape the analysis." }));
+
+  const noteField = el("label", { className: "researcher-note" });
+  const noteHeading = el("span", { className: "researcher-note__heading" });
+  noteHeading.appendChild(el("strong", { text: "Researcher note" }));
+  const noteStatus = el("small", { text: "Saved in this browser" });
+  noteHeading.appendChild(noteStatus);
+  const noteInput = el("textarea", {
+    attrs: {
+      rows: "3",
+      placeholder: "Record your interpretation, caveat, or follow-up question…",
+      "aria-label": `Researcher note for ${item.theme || `theme ${index + 1}`}`,
+    },
+  });
+  const storageKey = comparisonNoteKey(comparisonId, index);
+  try {
+    noteInput.value = localStorage.getItem(storageKey) || "";
+  } catch {
+    noteStatus.textContent = "Browser storage unavailable";
+  }
+  noteInput.addEventListener("input", () => {
+    try {
+      localStorage.setItem(storageKey, noteInput.value);
+      noteStatus.textContent = "Saved in this browser";
+    } catch {
+      noteStatus.textContent = "Could not save locally";
+    }
+  });
+  noteField.append(noteHeading, noteInput);
+
+  card.append(header, snippets, interpretation, noteField);
+  return card;
+}
+
+function renderComparisonReport(container, payload, comparisonId = "latest") {
   container.replaceChildren();
   if (!payload || typeof payload !== "object") {
-    container.appendChild(makeEmptyNote("No comparison payload available."));
+    container.appendChild(
+      makeEmptyNote("No comparison evidence is available yet.", {
+        label: "Generate a comparison",
+        href: "#comparison-form",
+      }),
+    );
     return;
   }
 
   const overview = payload.overview || {};
+  const overviewBlock = el("section", { className: "comparison-overview" });
+  overviewBlock.appendChild(el("span", { className: "panel-card__label", text: "Key takeaway" }));
+  overviewBlock.appendChild(
+    el("h3", { text: overview.key_takeaway || "Review the evidence themes below before drawing a conclusion." }),
+  );
+  if (overview.real_summary || overview.ai_summary) {
+    overviewBlock.appendChild(
+      el("p", {
+        text: joinNonEmpty([overview.real_summary, overview.ai_summary], " "),
+      }),
+    );
+  }
+  container.appendChild(overviewBlock);
+
+  const evidenceItems = buildEvidenceItems(payload);
+  const evidenceSection = el("section", { className: "comparison-evidence-section" });
+  const evidenceHeading = el("div", { className: "section-heading" });
+  const evidenceHeadingCopy = el("div");
+  evidenceHeadingCopy.appendChild(el("span", { className: "panel-card__label", text: "Evidence review" }));
+  evidenceHeadingCopy.appendChild(el("h3", { text: "Compare excerpts, judge confidence, and capture your interpretation" }));
+  evidenceHeadingCopy.appendChild(
+    el("p", {
+      className: "muted-copy",
+      text: "Confidence reflects evidence coverage, not statistical certainty. Researcher notes are saved only in this browser.",
+    }),
+  );
+  evidenceHeading.appendChild(evidenceHeadingCopy);
+  evidenceSection.appendChild(evidenceHeading);
+  const evidenceGrid = el("div", { className: "comparison-evidence-grid" });
+  if (evidenceItems.length) {
+    evidenceItems.forEach((item, index) => evidenceGrid.appendChild(evidenceSnippetCard(item, index, comparisonId)));
+  } else {
+    evidenceGrid.appendChild(makeEmptyNote("This comparison did not return excerpt-level evidence. Generate it again to produce a more reviewable result.", {
+      label: "Generate another comparison",
+      href: "#comparison-form",
+    }));
+  }
+  evidenceSection.appendChild(evidenceGrid);
+  container.appendChild(evidenceSection);
+
+  const summaryHeading = el("h3", { className: "comparison-section-title", text: "Synthesis at a glance" });
+  container.appendChild(summaryHeading);
   const summaryGrid = el("section", { className: "comparison-summary-grid" });
   buildComparisonCards(payload).forEach((card) => summaryGrid.appendChild(comparisonSummaryCard(card)));
   container.appendChild(summaryGrid);
@@ -1687,8 +2057,8 @@ function renderComparisonReport(container, payload) {
   }
 
   if (payload.markdown_report) {
-    const block = el("div", { className: "report-block" });
-    block.appendChild(el("h3", { className: "comparison-section-title", text: "Narrative report" }));
+    const block = el("details", { className: "report-block comparison-narrative" });
+    block.appendChild(el("summary", { text: "Open full narrative report" }));
     block.appendChild(el("p", { text: payload.markdown_report }));
     container.appendChild(block);
   }
@@ -1710,16 +2080,44 @@ async function initComparisons(signal) {
   const output = document.getElementById("comparison-output");
   const report = document.getElementById("comparison-report");
   const list = document.getElementById("comparison-list");
+  let selectedComparisonId = "";
 
-  async function refresh() {
-    const comparisons = await loadCollection("comparisons");
-    renderResourceCards(list, comparisons, (comparison) =>
-      resourceCard(`Comparison ${comparison.id.slice(0, 8)}`, comparison.payload?.overview?.key_takeaway || "No summary available.", [
-        formatDate(comparison.created_at),
-      ]),
+  async function refresh(preferredId = selectedComparisonId) {
+    const comparisons = (await loadCollection("comparisons"))
+      .sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
+    const selected = comparisons.find((item) => item.id === preferredId) || comparisons[0] || null;
+    selectedComparisonId = selected?.id || "";
+    renderResourceCards(
+      list,
+      comparisons,
+      (comparison) => {
+        const card = resourceCard(
+          `Comparison ${comparison.id.slice(0, 8)}`,
+          comparison.payload?.overview?.key_takeaway || "Open this comparison to review its evidence.",
+          [formatDate(comparison.created_at), comparison.id === selectedComparisonId ? "Currently reviewing" : "Saved comparison"],
+        );
+        const button = el("button", {
+          className: `button ${comparison.id === selectedComparisonId ? "button--primary" : "button--secondary"}`,
+          text: comparison.id === selectedComparisonId ? "Reviewing evidence" : "Review evidence",
+          attrs: { type: "button" },
+        });
+        button.addEventListener("click", async () => {
+          selectedComparisonId = comparison.id;
+          renderComparisonReport(report, comparison.payload, comparison.id);
+          await refresh(comparison.id);
+        });
+        card.appendChild(button);
+        return card;
+      },
+      {
+        message: "No comparison reports exist for this study.",
+        action: { label: "Generate your first comparison", href: "#comparison-form" },
+      },
     );
-    if (comparisons[0]) {
-      renderComparisonReport(report, comparisons[0].payload);
+    if (selected) {
+      renderComparisonReport(report, selected.payload, selected.id);
+    } else {
+      renderComparisonReport(report, null);
     }
   }
 
@@ -1740,8 +2138,8 @@ async function initComparisons(signal) {
         }),
       });
       setMessageState(output, "Comparison generated successfully.");
-      renderComparisonReport(report, result.payload);
-      await refresh();
+      selectedComparisonId = result.id;
+      await refresh(result.id);
     } catch (error) {
       setMessageState(output, error.message);
     } finally {
@@ -1755,7 +2153,12 @@ async function initComparisons(signal) {
 function renderSupportAgentResult(container, ticket) {
   if (!container) return;
   if (!ticket) {
-    container.replaceChildren(makeEmptyNote("Submit a support request to see the response here."));
+    container.replaceChildren(
+      makeEmptyNote("Submit a support request to see the response here.", {
+        label: "Create a support request",
+        href: "#support-ticket-form",
+      }),
+    );
     return;
   }
 
@@ -2029,6 +2432,7 @@ async function refreshCurrentPage(options = {}) {
   renderHeader();
   renderConsentBanner();
   renderWorkspaceNav();
+  renderPageContext();
   await initializeCurrentPage();
   trackAnalyticsEvent("page_view", { pageLabel: PAGE_LABELS[page] || page });
   installCardSpotlight();

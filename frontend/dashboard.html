@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Dashboard | Qualitative AI Interview Studio</title>
-    <link rel="stylesheet" href="/frontend/styles.css?v=2026-04-21-1" />
+    <link rel="stylesheet" href="/frontend/styles.css?v=2026-09-25-2" />
   </head>
   <body data-page="dashboard">
     <div class="site-shell">
@@ -31,16 +31,13 @@
             </div>
           </div>
 
-          <aside class="hero__panel hero__panel--dashboard">
-            <div class="dashboard-illustration" aria-hidden="true">
-              <span class="dashboard-orb dashboard-orb--one"></span>
-              <span class="dashboard-orb dashboard-orb--two"></span>
-              <span class="dashboard-orb dashboard-orb--three"></span>
-              <div class="dashboard-stack">
-                <span></span>
-                <span></span>
-                <span></span>
-              </div>
+          <aside class="hero__panel hero__panel--dashboard dashboard-hero-panel">
+            <div class="dashboard-hero-panel__heading">
+              <span class="panel-card__label">Pick up where you left off</span>
+              <h2>Recent activity and next move</h2>
+            </div>
+            <div id="dashboard-hero-activity" class="dashboard-hero-activity">
+              <p>Workspace activity will appear here.</p>
             </div>
           </aside>
         </section>
@@ -120,6 +117,6 @@
       </main>
     </div>
 
-    <script src="/frontend/app.js?v=2026-04-21-1" type="module"></script>
+    <script src="/frontend/app.js?v=2026-09-25-2" type="module"></script>
   </body>
 </html>
