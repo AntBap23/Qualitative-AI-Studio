@@ -118,25 +118,6 @@ function installPageTransitions() {
   });
 }
 
-function installCardSpotlight() {
-  const targets = document.querySelectorAll(".panel-card, .showcase-card, .metric-card, .resource-card, .report-block");
-  targets.forEach((node) => {
-    if (node.dataset.spotlightBound === "true") return;
-    node.dataset.spotlightBound = "true";
-    node.addEventListener("pointermove", (event) => {
-      const rect = node.getBoundingClientRect();
-      const x = event.clientX - rect.left;
-      const y = event.clientY - rect.top;
-      node.style.setProperty("--mx", `${x}px`);
-      node.style.setProperty("--my", `${y}px`);
-      node.style.setProperty("--glow", "1");
-    });
-    node.addEventListener("pointerleave", () => {
-      node.style.setProperty("--glow", "0");
-    });
-  });
-}
-
 async function callApi(path, options = {}) {
   const headers = { ...(options.headers || {}) };
   const isFormData = options.body instanceof FormData;
@@ -154,7 +135,12 @@ async function callApi(path, options = {}) {
   }
 
   if (!response.ok) {
-    throw new Error(typeof data === "string" ? data : pretty(data));
+    const detail = data && typeof data === "object" ? data.detail : null;
+    const message = typeof data === "string" ? data
+      : typeof detail === "string" ? detail
+      : Array.isArray(detail) ? detail.map((item) => item.msg || "Check the form fields.").join(" ")
+      : "The request could not be completed. Please try again.";
+    throw new Error(message);
   }
   return data;
 }
@@ -423,8 +409,11 @@ function setNodeContent(node, content) {
 
 function setMessageState(node, message, options = {}) {
   if (!node) return;
+  node.setAttribute("role", options.error ? "alert" : "status");
+  node.setAttribute("aria-live", options.error ? "assertive" : "polite");
   setNodeContent(node, message);
   node.classList.toggle("is-loading", Boolean(options.loading));
+  node.classList.toggle("is-error", Boolean(options.error));
 }
 
 function startButtonLoading(button, loadingText) {
@@ -545,17 +534,44 @@ async function navigateTo(path, options = {}) {
   }
 }
 
+function installSkipLink() {
+  const main = document.querySelector("main");
+  if (main) { main.id = "main-content"; main.tabIndex = -1; }
+  if (!document.querySelector(".skip-link")) {
+    const skipLink = el("a", { className: "skip-link", text: "Skip to content", attrs: { href: "#main-content" } });
+    skipLink.addEventListener("click", (event) => {
+      event.preventDefault();
+      const content = document.getElementById("main-content");
+      content?.focus();
+      content?.scrollIntoView({ block: "start" });
+    });
+    document.body.prepend(skipLink);
+  }
+}
+
 function renderHeader() {
   const header = document.querySelector("[data-site-header]");
   if (!header) return;
 
+  if (PUBLIC_PAGES.has(page)) {
+    const masthead = el("div", { className: "public-masthead" });
+    const identity = el("a", { className: "public-identity", attrs: { href: "/" } });
+    identity.append(el("span", { className: "public-identity__mark", text: "q.", attrs: { "aria-hidden": "true" } }), el("span", { text: "Qualitative AI Studio" }));
+    const nav = el("nav", { className: "public-nav", attrs: { "aria-label": "Studio navigation" } });
+    nav.append(el("a", { text: "The method", attrs: { href: "/#method-desk-title" } }), el("a", { text: state.auth.authenticated ? "Research desk" : "Sign in", attrs: { href: state.auth.authenticated ? "/dashboard" : "/sign-in", ...(page === "sign-in" ? { "aria-current": "page" } : {}) } }));
+    masthead.append(identity, nav);
+    header.replaceChildren(masthead);
+    installSkipLink();
+    return;
+  }
+
   const shell = el("div", { className: "shell-chrome" });
   const sidebar = el("aside", { className: "app-sidebar", attrs: { "aria-label": "Primary navigation" } });
   const brand = el("a", { className: "app-brand", attrs: { href: "/dashboard" } });
-  brand.appendChild(el("span", { className: "app-brand__mark", html: iconSprite("spark") }));
+  brand.appendChild(el("span", { className: "app-brand__mark", text: "q.", attrs: { "aria-hidden": "true" } }));
   const brandCopy = el("span", { className: "app-brand__copy" });
   brandCopy.appendChild(el("strong", { text: "Qualitative AI" }));
-  brandCopy.appendChild(el("span", { text: "Research workspace" }));
+  brandCopy.appendChild(el("span", { text: "Interview research studio" }));
   brand.appendChild(brandCopy);
 
   const nav = el("nav", { className: "sidebar-nav", attrs: { "aria-label": "Application navigation" } });
@@ -573,7 +589,7 @@ function renderHeader() {
 
   const setupGroup = el("details", {
     className: `sidebar-nav__group${SETUP_PAGES.has(page) ? " is-active" : ""}`,
-    attrs: { open: SETUP_PAGES.has(page) || window.matchMedia("(max-width: 720px)").matches },
+    attrs: { open: true },
   });
   const setupSummary = el("summary", { className: "sidebar-nav__group-toggle", attrs: { title: "Study setup" } });
   setupSummary.appendChild(el("span", { className: "sidebar-nav__icon", html: iconSprite("clipboard") }));
@@ -599,12 +615,12 @@ function renderHeader() {
 
   const topbar = el("div", { className: "header-bar" });
   const pageIntro = el("div", { className: "page-intro" });
-  pageIntro.appendChild(el("span", { className: "page-intro__eyebrow", text: "Research Studio" }));
+  pageIntro.appendChild(el("span", { className: "page-intro__eyebrow", text: "Study workspace" }));
   pageIntro.appendChild(el("strong", { className: "page-intro__title", text: PAGE_LABELS[page] || "Workspace" }));
   pageIntro.appendChild(
     el("span", {
       className: "page-intro__copy",
-      text: currentStudy() ? `Scoped to ${currentStudy().name}` : "Your questions. Your evidence. Your interpretation.",
+      text: currentStudy() ? currentStudy().name : "Select a study to work with its materials.",
     }),
   );
 
@@ -661,15 +677,18 @@ function renderHeader() {
   }
 
   utility.append(switcher, account);
-  sidebar.append(brand, nav, utilityNav);
+  const menuButton = el("button", { className: "mobile-menu", text: "Navigation", attrs: { type: "button", "aria-expanded": "false", "aria-controls": "desk-navigation" } });
+  nav.id = "desk-navigation";
+  menuButton.addEventListener("click", () => {
+    const expanded = sidebar.classList.toggle("is-expanded");
+    menuButton.setAttribute("aria-expanded", String(expanded));
+    menuButton.textContent = expanded ? "Close navigation" : "Navigation";
+  });
+  sidebar.append(brand, menuButton, nav, utilityNav);
   topbar.append(pageIntro, utility);
   shell.append(sidebar, topbar);
   header.replaceChildren(shell);
-  if (!document.querySelector(".skip-link")) {
-    const main = document.querySelector("main");
-    if (main) { main.id = "main-content"; main.tabIndex = -1; }
-    document.body.prepend(el("a", { className: "skip-link", text: "Skip to content", attrs: { href: "#main-content" } }));
-  }
+  installSkipLink();
 }
 
 function renderConsentBanner() {
@@ -1045,7 +1064,7 @@ function dashboardEntityCard({ label, title, count, copy, href, icon, meta }) {
   const copyNode = el("p", { text: copy });
   const footer = el("div", { className: "dashboard-entity-card__footer" });
   if (meta) footer.appendChild(el("span", { className: "dashboard-entity-card__meta", text: meta }));
-  footer.appendChild(el("a", { className: "button button--primary", text: "Open", attrs: { href } }));
+  footer.appendChild(el("a", { className: "text-link", text: "Open", attrs: { href, "aria-label": `Open ${title.toLowerCase()}` } }));
 
   card.append(header, countNode, copyNode, footer);
   return card;
@@ -1275,7 +1294,7 @@ async function initDashboard() {
   const workspaceCard = resourceCard("Open workspace", "Inspect setup coverage and move between every stage of the active study.", ["Workflow overview"]);
   appendCardAction(workspaceCard, "Open workspace", "/workspace", true);
   const nextStepCards = [recommendedCard, workspaceCard];
-  nextSteps.replaceChildren(...nextStepCards);
+  nextSteps?.replaceChildren(...nextStepCards);
 }
 
 async function initStudies() {
@@ -1350,7 +1369,7 @@ async function initStudies() {
       renderHeader();
       await initStudies();
     } catch (error) {
-      setMessageState(output, error.message);
+      setMessageState(output, error.message, { error: true });
     } finally {
       stopButtonLoading(submitButton);
     }
@@ -1466,7 +1485,7 @@ async function initProtocols(signal) {
       }
       setMessageState(output, `Loaded protocol text from ${file.name}. Review and split it across the protocol fields as needed.`);
     } catch (error) {
-      setMessageState(output, error.message);
+      setMessageState(output, error.message, { error: true });
     } finally {
       stopButtonLoading(submitButton);
     }
@@ -1495,7 +1514,7 @@ async function initProtocols(signal) {
       setMessageState(output, `Saved protocol: ${record.name}`);
       await refresh();
     } catch (error) {
-      setMessageState(output, error.message);
+      setMessageState(output, error.message, { error: true });
     } finally {
       stopButtonLoading(submitButton);
     }
@@ -1553,7 +1572,7 @@ async function initPersonas(signal) {
       }
       setMessageState(output, `Loaded text from ${file.name}. Review it, then extract the persona.`);
     } catch (error) {
-      setMessageState(output, error.message);
+      setMessageState(output, error.message, { error: true });
     } finally {
       stopButtonLoading(submitButton);
     }
@@ -1580,7 +1599,7 @@ async function initPersonas(signal) {
       setMessageState(output, `Saved persona: ${saved.name}`);
       await refresh();
     } catch (error) {
-      setMessageState(output, error.message);
+      setMessageState(output, error.message, { error: true });
     } finally {
       stopButtonLoading(submitButton);
     }
@@ -1636,7 +1655,7 @@ async function initInterviewGuide(signal) {
       }
       setMessageState(questionsOutput, `Loaded text from ${file.name}. Review it, then extract questions.`);
     } catch (error) {
-      setMessageState(questionsOutput, error.message);
+      setMessageState(questionsOutput, error.message, { error: true });
     } finally {
       stopButtonLoading(submitButton);
     }
@@ -1662,7 +1681,7 @@ async function initInterviewGuide(signal) {
         questions.length ? questions.map((item, index) => `${index + 1}. ${item}`).join("\n") : "No questions extracted.",
       );
     } catch (error) {
-      setMessageState(questionsOutput, error.message);
+      setMessageState(questionsOutput, error.message, { error: true });
     } finally {
       stopButtonLoading(submitButton);
     }
@@ -1690,7 +1709,7 @@ async function initInterviewGuide(signal) {
       setMessageState(questionsOutput, "Guide saved successfully.");
       await refresh();
     } catch (error) {
-      setMessageState(questionsOutput, error.message);
+      setMessageState(questionsOutput, error.message, { error: true });
     } finally {
       stopButtonLoading(submitButton);
     }
@@ -1752,7 +1771,7 @@ async function initTranscripts(signal) {
       }
       setMessageState(output, `Loaded text from ${file.name}. Review it, then save the transcript.`);
     } catch (error) {
-      setMessageState(output, error.message);
+      setMessageState(output, error.message, { error: true });
     } finally {
       stopButtonLoading(submitButton);
     }
@@ -1777,7 +1796,7 @@ async function initTranscripts(signal) {
       setMessageState(output, `Saved transcript: ${record.name}`);
       await refresh();
     } catch (error) {
-      setMessageState(output, error.message);
+      setMessageState(output, error.message, { error: true });
     } finally {
       stopButtonLoading(submitButton);
     }
@@ -1863,7 +1882,7 @@ async function initSimulations(signal) {
       setMessageState(output, `Simulation created with ${result.responses.length} responses.`);
       await refresh();
     } catch (error) {
-      setMessageState(output, error.message);
+      setMessageState(output, error.message, { error: true });
     } finally {
       stopButtonLoading(submitButton);
     }
@@ -2146,7 +2165,7 @@ async function initComparisons(signal) {
       selectedComparisonId = result.id;
       await refresh(result.id);
     } catch (error) {
-      setMessageState(output, error.message);
+      setMessageState(output, error.message, { error: true });
     } finally {
       stopButtonLoading(submitButton);
     }
@@ -2212,7 +2231,7 @@ async function initSupport(signal) {
       if (productArea) productArea.value = "Research workspace";
       renderSupportAgentResult(result, record);
     } catch (error) {
-      setMessageState(output, error.message);
+      setMessageState(output, error.message, { error: true });
     } finally {
       stopButtonLoading(submitButton);
     }
@@ -2307,8 +2326,8 @@ async function initSignIn(signal) {
     if (title) {
       title.textContent =
         authMode === "sign-up"
-          ? "Make space for your next question."
-          : "Welcome back to the studio.";
+          ? "Create your research account."
+          : "Sign in to your research desk.";
     }
     if (authModeLabel) {
       authModeLabel.textContent = authMode === "sign-up" ? "Create your account" : "Welcome back";
@@ -2382,7 +2401,7 @@ async function initSignIn(signal) {
 
       setMessageState(output, "Unable to start a session.");
     } catch (error) {
-      setMessageState(output, error.message || "Sign in failed.");
+      setMessageState(output, error.message || "Sign in failed.", { error: true });
     } finally {
       stopButtonLoading(submitButton);
     }

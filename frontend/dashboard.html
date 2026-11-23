@@ -3,8 +3,8 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Dashboard | Qualitative AI Interview Studio</title>
-    <link rel="stylesheet" href="/frontend/styles.css?v=2026-11-22" />
+    <title>Dashboard | Qualitative AI Studio</title>
+    <link rel="stylesheet" href="/frontend/styles.css?v=notebook-1" />
   </head>
   <body data-page="dashboard">
     <div class="site-shell">
@@ -42,22 +42,10 @@
           </aside>
         </section>
 
-        <section class="metric-grid metric-grid--dashboard">
-          <article class="metric-card">
-            <span class="metric-card__label">Studies</span>
-            <strong id="dashboard-studies-count">0</strong>
-            <p class="muted-copy">Total study workspaces available in this account.</p>
-          </article>
-          <article class="metric-card metric-card--featured">
-            <span class="metric-card__label">Setup Assets</span>
-            <strong id="dashboard-assets-count">0</strong>
-            <p class="muted-copy">Protocols, personas, guides, and transcripts in scope.</p>
-          </article>
-          <article class="metric-card">
-            <span class="metric-card__label">Analysis Runs</span>
-            <strong id="dashboard-analysis-count">0</strong>
-            <p class="muted-copy">Simulations and comparisons available for review.</p>
-          </article>
+        <section class="desk-totals" aria-label="Research inventory">
+          <div><strong id="dashboard-studies-count">0</strong><span>Studies</span></div>
+          <div><strong id="dashboard-assets-count">0</strong><span>Research materials</span></div>
+          <div><strong id="dashboard-analysis-count">0</strong><span>Simulations &amp; comparisons</span></div>
         </section>
 
         <section class="dashboard-layout">
@@ -89,13 +77,7 @@
           </div>
 
           <aside class="dashboard-sidebar">
-            <article class="panel-card panel-card--section">
-              <span class="panel-card__label">In focus</span>
-              <h2 id="dashboard-active-study-sidebar">No study selected</h2>
-              <p id="dashboard-active-study-copy">
-                Select a study from the top bar to scope dashboard summaries and workflow links.
-              </p>
-            </article>
+
 
             <article class="panel-card panel-card--section">
               <span class="panel-card__label">Recent Activity</span>
@@ -105,18 +87,12 @@
               </div>
             </article>
 
-            <article class="panel-card panel-card--section">
-              <span class="panel-card__label">Next Steps</span>
-              <h2>Keep your research moving</h2>
-              <div id="dashboard-next-steps" class="stack-list">
-                <p class="muted-copy">Workflow guidance will appear here.</p>
-              </div>
-            </article>
+
           </aside>
         </section>
       </main>
     </div>
 
-    <script src="/frontend/app.js?v=2026-11-22" type="module"></script>
+    <script src="/frontend/app.js?v=notebook-1" type="module"></script>
   </body>
 </html>
