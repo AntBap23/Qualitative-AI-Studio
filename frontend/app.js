@@ -110,6 +110,7 @@ function installPageTransitions() {
     const url = new URL(link.href, window.location.origin);
     const target = `${url.pathname}${url.search}${url.hash}`;
     if (url.origin !== window.location.origin) return;
+    if (url.pathname === window.location.pathname && url.search === window.location.search && url.hash) return;
     if (link.target === "_blank" || event.metaKey || event.ctrlKey || event.shiftKey) return;
     if (target === `${window.location.pathname}${window.location.search}${window.location.hash}`) return;
     event.preventDefault();
@@ -554,14 +555,14 @@ function renderHeader() {
   brand.appendChild(el("span", { className: "app-brand__mark", html: iconSprite("spark") }));
   const brandCopy = el("span", { className: "app-brand__copy" });
   brandCopy.appendChild(el("strong", { text: "Qualitative AI" }));
-  brandCopy.appendChild(el("span", { text: "Interview Studio" }));
+  brandCopy.appendChild(el("span", { text: "Research workspace" }));
   brand.appendChild(brandCopy);
 
   const nav = el("nav", { className: "sidebar-nav", attrs: { "aria-label": "Application navigation" } });
   const appendNavLink = (container, item, className = "sidebar-nav__link") => {
     const link = el("a", {
       className: `${className}${isTopNavActive(item.key) ? " is-active" : ""}`,
-      attrs: { href: item.href, title: item.label },
+      attrs: { href: item.href, title: item.label, ...(isTopNavActive(item.key) ? { "aria-current": "page" } : {}) },
     });
     link.appendChild(el("span", { className: "sidebar-nav__icon", html: iconSprite(item.icon) }));
     link.appendChild(el("span", { className: "sidebar-nav__label", text: item.label }));
@@ -572,7 +573,7 @@ function renderHeader() {
 
   const setupGroup = el("details", {
     className: `sidebar-nav__group${SETUP_PAGES.has(page) ? " is-active" : ""}`,
-    attrs: { open: SETUP_PAGES.has(page) },
+    attrs: { open: SETUP_PAGES.has(page) || window.matchMedia("(max-width: 720px)").matches },
   });
   const setupSummary = el("summary", { className: "sidebar-nav__group-toggle", attrs: { title: "Study setup" } });
   setupSummary.appendChild(el("span", { className: "sidebar-nav__icon", html: iconSprite("clipboard") }));
@@ -589,7 +590,7 @@ function renderHeader() {
   UTILITY_NAV.forEach((item) => {
     const link = el("a", {
       className: `sidebar-nav__link${page === item.key ? " is-active" : ""}`,
-      attrs: { href: item.href, title: item.label },
+      attrs: { href: item.href, title: item.label, ...(isTopNavActive(item.key) ? { "aria-current": "page" } : {}) },
     });
     link.appendChild(el("span", { className: "sidebar-nav__icon", html: iconSprite(item.icon) }));
     link.appendChild(el("span", { className: "sidebar-nav__label", text: item.label }));
@@ -598,12 +599,12 @@ function renderHeader() {
 
   const topbar = el("div", { className: "header-bar" });
   const pageIntro = el("div", { className: "page-intro" });
-  pageIntro.appendChild(el("span", { className: "page-intro__eyebrow", text: "Research Portal" }));
+  pageIntro.appendChild(el("span", { className: "page-intro__eyebrow", text: "Research Studio" }));
   pageIntro.appendChild(el("strong", { className: "page-intro__title", text: PAGE_LABELS[page] || "Workspace" }));
   pageIntro.appendChild(
     el("span", {
       className: "page-intro__copy",
-      text: currentStudy() ? `Scoped to ${currentStudy().name}` : "Choose a study to focus the workspace.",
+      text: currentStudy() ? `Scoped to ${currentStudy().name}` : "Your questions. Your evidence. Your interpretation.",
     }),
   );
 
@@ -614,7 +615,7 @@ function renderHeader() {
   switcherTop.appendChild(
     el("span", {
       className: `study-status${currentStudy() ? " is-active" : " is-empty"}`,
-      text: currentStudy() ? "Active workspace" : "Selection needed",
+      text: currentStudy() ? "Active workspace" : "Choose your focus",
     }),
   );
   const select = el("select", { attrs: { id: "global-study-select", "aria-label": "Active study" } });
@@ -633,14 +634,14 @@ function renderHeader() {
   account.appendChild(el("span", { className: "account-chip__avatar", text: userInitials(state.auth.user) }));
   const accountCopy = el("div", { className: "account-chip__copy" });
   accountCopy.appendChild(
-    el("strong", { text: state.auth.authenticated ? formatUserDisplayName(state.auth.user) : "Guest session" }),
+    el("strong", { text: state.auth.authenticated ? formatUserDisplayName(state.auth.user) : "Your research starts here" }),
   );
   accountCopy.appendChild(
     el("span", {
       className: "brand__copy",
       text: state.auth.authenticated
         ? `${userRoleLabel(state.auth.user)} • ${consentStatusLabel()}`
-        : "Sign in to access study operations.",
+        : "A space for deeper inquiry.",
     }),
   );
   account.appendChild(accountCopy);
@@ -654,9 +655,9 @@ function renderHeader() {
     signOutButton.addEventListener("click", async () => {
       await signOutCurrentSession();
     });
-    sidebar.appendChild(signOutButton);
+    utilityNav.appendChild(signOutButton);
   } else {
-    sidebar.appendChild(el("a", { className: "button button--secondary sidebar-signout", text: "Sign in", attrs: { href: "/sign-in" } }));
+    utilityNav.appendChild(el("a", { className: "button button--secondary sidebar-signout", text: "Sign in", attrs: { href: "/sign-in" } }));
   }
 
   utility.append(switcher, account);
@@ -664,6 +665,11 @@ function renderHeader() {
   topbar.append(pageIntro, utility);
   shell.append(sidebar, topbar);
   header.replaceChildren(shell);
+  if (!document.querySelector(".skip-link")) {
+    const main = document.querySelector("main");
+    if (main) { main.id = "main-content"; main.tabIndex = -1; }
+    document.body.prepend(el("a", { className: "skip-link", text: "Skip to content", attrs: { href: "#main-content" } }));
+  }
 }
 
 function renderConsentBanner() {
@@ -1321,8 +1327,7 @@ async function initStudies() {
   });
 
   const form = document.getElementById("study-create-form");
-  const signal = pageEventController?.signal;
-  form?.addEventListener("submit", async (event) => {
+  if (form) form.onsubmit = async (event) => {
     event.preventDefault();
     const output = document.getElementById("study-create-output");
     const submitButton = form.querySelector('button[type="submit"]');
@@ -1349,7 +1354,7 @@ async function initStudies() {
     } finally {
       stopButtonLoading(submitButton);
     }
-  }, { signal });
+  };
 }
 
 async function initWorkspace() {
@@ -2302,17 +2307,17 @@ async function initSignIn(signal) {
     if (title) {
       title.textContent =
         authMode === "sign-up"
-          ? "Create an account to access your research workspace."
-          : "Sign in to access your research workspace.";
+          ? "Make space for your next question."
+          : "Welcome back to the studio.";
     }
     if (authModeLabel) {
-      authModeLabel.textContent = authMode === "sign-up" ? "Current mode: Create account" : "Current mode: Sign in";
+      authModeLabel.textContent = authMode === "sign-up" ? "Create your account" : "Welcome back";
     }
     if (authModeCopy) {
       authModeCopy.textContent =
         authMode === "sign-up"
-          ? "Create-account mode is active. Enter your email and a password with at least 12 characters, then click the Create account button below."
-          : "Sign-in mode is active. Enter your email and password, then submit the form.";
+          ? "Use your email and a password with at least 12 characters."
+          : "Continue with the email you use for your research.";
     }
     if (passwordInput) {
       passwordInput.autocomplete = authMode === "sign-up" ? "new-password" : "current-password";
@@ -2435,7 +2440,6 @@ async function refreshCurrentPage(options = {}) {
   renderPageContext();
   await initializeCurrentPage();
   trackAnalyticsEvent("page_view", { pageLabel: PAGE_LABELS[page] || page });
-  installCardSpotlight();
   if (options.scrollToTop) {
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
   }
