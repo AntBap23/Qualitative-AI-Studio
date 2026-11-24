@@ -1,4 +1,4 @@
-import "/frontend/support-widget.js?v=customer-agent-1";
+import "/frontend/support-widget.js?v=human-handoff-1";
 const STORAGE_KEY = "active-study-id";
 const PAGE_LABELS = {
   home: "Home",

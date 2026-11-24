@@ -18,6 +18,7 @@ class ChatMessage(BaseModel):
     request_id: UUID = Field(default_factory=uuid4)
     message: str = Field(min_length=1, max_length=6000)
     create_ticket: bool = False
+    request_human: bool = False
 
 
 def configured() -> bool:

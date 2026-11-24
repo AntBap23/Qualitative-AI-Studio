@@ -35,6 +35,15 @@ class SupportChatTests(unittest.TestCase):
         self.assertNotIn('customer_id', json.loads(request.data))
         self.assertNotIn('test-access', r.text)
 
+    def test_human_handoff_is_relayed_with_authenticated_identity(self):
+        fake = MagicMock()
+        fake.__enter__.return_value.read.return_value = b'{"handoff_state":"requested"}'
+        with patch.object(support_chat, 'urlopen', return_value=fake) as call:
+            r=self.client.post('/api/support-chat/messages',json={'conversation_id':str(uuid4()),'message':'Talk to a human','request_human':True})
+        self.assertEqual(r.status_code,200)
+        self.assertTrue(json.loads(call.call_args.args[0].data)['request_human'])
+        self.assertEqual(call.call_args.args[0].get_header('X-studio-customer-id'),self.user_id)
+
     def test_authentication_required(self):
         with patch.object(support_chat, 'require_authenticated_user', side_effect=HTTPException(401, 'Sign in')):
             self.assertEqual(self.client.post('/api/support-chat/conversations').status_code, 401)
