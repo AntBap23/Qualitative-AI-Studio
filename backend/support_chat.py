@@ -33,6 +33,7 @@ def relay(request: Request, method: str, path: str, payload: dict | None = None)
     headers = {
         "Content-Type": "application/json",
         "Accept": "application/json",
+        "User-Agent": "QualitativeAIStudio-SupportChat/1.0",
         "X-Studio-Bridge-Secret": settings.customer_agent_bridge_secret,
         "X-Studio-Customer-ID": context.user_id,
     }
