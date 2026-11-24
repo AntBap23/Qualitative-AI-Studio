@@ -21,7 +21,7 @@ class ChatMessage(BaseModel):
 
 
 def configured() -> bool:
-    return bool(settings.customer_agent_url and settings.customer_agent_access_token and settings.customer_agent_bridge_secret)
+    return bool(settings.customer_agent_url and settings.customer_agent_bridge_secret)
 
 
 def relay(request: Request, method: str, path: str, payload: dict | None = None):
@@ -30,17 +30,20 @@ def relay(request: Request, method: str, path: str, payload: dict | None = None)
         raise HTTPException(503, "Live chat is not available yet. You can still submit a support request on the Support page.")
     if not settings.customer_agent_url.startswith("https://"):
         raise HTTPException(503, "Live chat connection is unavailable.")
+    headers = {
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+        "X-Studio-Bridge-Secret": settings.customer_agent_bridge_secret,
+        "X-Studio-Customer-ID": context.user_id,
+    }
+    # Keep compatibility during cutover; Workers needs only the bridge secret.
+    if settings.customer_agent_access_token:
+        headers["OAI-Sites-Authorization"] = "Bearer " + settings.customer_agent_access_token
     upstream = URLRequest(
         settings.customer_agent_url.rstrip("/") + "/api/bridge/" + path,
         data=json.dumps(payload).encode() if payload is not None else None,
         method=method,
-        headers={
-            "Content-Type": "application/json",
-            "Accept": "application/json",
-            "OAI-Sites-Authorization": "Bearer " + settings.customer_agent_access_token,
-            "X-Studio-Bridge-Secret": settings.customer_agent_bridge_secret,
-            "X-Studio-Customer-ID": context.user_id,
-        },
+        headers=headers,
     )
     try:
         with urlopen(upstream, timeout=60) as response:
