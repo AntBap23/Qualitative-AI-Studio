@@ -48,11 +48,13 @@ from backend.schemas import (
     UserDataConsentUpdateRequest,
 )
 from backend.services import ResearchBackendService
+from backend.support_chat import router as support_chat_router
 from backend.settings import settings
 from backend.storage import get_storage
 
 
 app = FastAPI(title=settings.api_title, version=settings.api_version)
+app.include_router(support_chat_router)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origin_list,
